@@ -1,0 +1,23 @@
+# Gradle
+.gradle/
+build/
+**/build/
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+local.properties
+captures/
+
+# Kotlin / Gradle persistent data
+.kotlin/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Generated signing/output artifacts
+*.apk
+*.aab
+*.ap_
+output-metadata.json
