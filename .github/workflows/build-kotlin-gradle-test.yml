@@ -1,0 +1,117 @@
+name: Build Kotlin Gradle test app
+
+on:
+  push:
+    branches:
+      - sample/kotlin-gradle-test-v1
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android platform and Build Tools
+        shell: bash
+        run: |
+          sdkmanager \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "platform-tools"
+
+      - name: Prepare self-contained Gradle wrapper
+        shell: bash
+        run: |
+          mkdir wrapper-bootstrap
+          printf 'rootProject.name = "WrapperBootstrap"\n' > wrapper-bootstrap/settings.gradle.kts
+          gradle -p wrapper-bootstrap wrapper \
+            --gradle-version 9.3.1 \
+            --distribution-type bin
+          mkdir -p gradle/wrapper
+          cp wrapper-bootstrap/gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.jar
+          cp wrapper-bootstrap/gradlew gradlew
+          cp wrapper-bootstrap/gradlew.bat gradlew.bat
+          chmod +x gradlew
+
+      - name: Generate standalone project
+        shell: bash
+        run: |
+          chmod +x ci/create-kotlin-test-project.sh
+          ci/create-kotlin-test-project.sh PocketHost-Kotlin-Gradle-Test
+          test -f PocketHost-Kotlin-Gradle-Test/settings.gradle.kts
+          test -f PocketHost-Kotlin-Gradle-Test/gradle/wrapper/gradle-wrapper.jar
+
+      - name: Build Kotlin APK
+        working-directory: PocketHost-Kotlin-Gradle-Test
+        shell: bash
+        run: |
+          ./gradlew \
+            --no-daemon \
+            --stacktrace \
+            :app:assembleDebug
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          APK=PocketHost-Kotlin-Gradle-Test/app/build/outputs/apk/debug/app-debug.apk
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          test -s "$APK"
+          unzip -t "$APK"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+      - name: Package test files
+        shell: bash
+        run: |
+          mkdir output
+          (
+            cd PocketHost-Kotlin-Gradle-Test
+            zip -X -r ../output/PocketHost-Kotlin-Gradle-Test-source.zip . \
+              -x '.gradle/*' 'app/build/*' '**/build/*'
+          )
+          cp \
+            PocketHost-Kotlin-Gradle-Test/app/build/outputs/apk/debug/app-debug.apk \
+            output/PocketHost-Kotlin-Gradle-Test-debug.apk
+          sha256sum \
+            output/PocketHost-Kotlin-Gradle-Test-source.zip \
+            output/PocketHost-Kotlin-Gradle-Test-debug.apk \
+            > output/SHA256SUMS.txt
+          {
+            echo "commit=${GITHUB_SHA}"
+            echo "run=${GITHUB_RUN_ID}"
+            echo "gradle=9.3.1"
+            echo "agp=9.1.1"
+            echo "compile_sdk=36"
+            echo "built_utc=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          } > output/BUILD_INFO.txt
+
+      - name: Upload app and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: PocketHost-Kotlin-Gradle-Test
+          path: output/
+          if-no-files-found: error
+          retention-days: 14
