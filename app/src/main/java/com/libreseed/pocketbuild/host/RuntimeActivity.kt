@@ -304,7 +304,10 @@ class RuntimeActivity : ComponentActivity() {
         val args = message.optJSONObject("args") ?: JSONObject()
         if (id.isBlank() || action.isBlank()) return
         val reply = Reply(id, transport)
-        runOnUiThread { executeAction(action, args, reply) }
+        runOnUiThread {
+            runCatching { executeAction(action, args, reply) }
+                .onFailure { reply.failure(it.message ?: "Host action failed.") }
+        }
     }
 
     private fun executeAction(action: String, args: JSONObject, reply: Reply) {
@@ -807,7 +810,7 @@ class RuntimeActivity : ComponentActivity() {
               window.pocket = Object.freeze({
                 call(action, args = {}) {
                   return new Promise((resolve, reject) => {
-                    const id = `${Date.now().toString(36)}-${(++sequence).toString(36)}`;
+                    const id = Date.now().toString(36) + '-' + (++sequence).toString(36);
                     pending.set(id, {resolve, reject});
                     window.PocketNative.postMessage(JSON.stringify({id, action, args}));
                   }).then(result => {

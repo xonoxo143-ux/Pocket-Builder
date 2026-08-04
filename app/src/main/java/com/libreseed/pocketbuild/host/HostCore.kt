@@ -551,7 +551,7 @@ class HostStore(private val context: Context) {
                 const canvas = document.querySelector('#c'), ctx = canvas.getContext('2d');
                 function resize(){ canvas.width=innerWidth*devicePixelRatio; canvas.height=innerHeight*devicePixelRatio; }
                 addEventListener('resize', resize); resize();
-                let t=0; (function draw(){ t+=.008; const w=canvas.width,h=canvas.height; ctx.clearRect(0,0,w,h); for(let i=0;i<35;i++){ const x=(Math.sin(t+i*1.77)*.45+.5)*w; const y=(Math.cos(t*.7+i*2.41)*.45+.5)*h; ctx.fillStyle=`hsla(${(i*31+t*180)%360},80%,60%,.18)`; ctx.beginPath(); ctx.arc(x,y,(20+i%7*8)*devicePixelRatio,0,Math.PI*2); ctx.fill(); } requestAnimationFrame(draw); })();
+                let t=0; (function draw(){ t+=.008; const w=canvas.width,h=canvas.height; ctx.clearRect(0,0,w,h); for(let i=0;i<35;i++){ const x=(Math.sin(t+i*1.77)*.45+.5)*w; const y=(Math.cos(t*.7+i*2.41)*.45+.5)*h; ctx.fillStyle='hsla('+((i*31+t*180)%360)+',80%,60%,.18)'; ctx.beginPath(); ctx.arc(x,y,(20+i%7*8)*devicePixelRatio,0,Math.PI*2); ctx.fill(); } requestAnimationFrame(draw); })();
                 addEventListener('pocketready', async () => log(await pocket.call('host.info')));
                 document.querySelectorAll('button').forEach(button => button.onclick = async () => {
                   try {
