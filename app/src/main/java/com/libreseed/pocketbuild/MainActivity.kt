@@ -26,6 +26,7 @@ class MainActivity : ComponentActivity() {
                     state = state,
                     onSourceSelected = viewModel::inspect,
                     onBuildRequested = viewModel::queueBuild,
+                    onFolderSelected = viewModel::importProjectTree,
                     onNoticeDismissed = viewModel::clearNotice,
                 )
             }
