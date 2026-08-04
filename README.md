@@ -1,45 +1,31 @@
-# Pocket Builder
+# PocketBuild
 
-Pocket Builder is an Android app focused on one simple flow:
+PocketBuild is a mobile-first Android build manager. It opens supported project files and archives, installs only the required verified toolchains, builds inside private workspaces, signs the result, and hands the APK to Android's installer.
 
-1. **Select Source**
-2. **Build App**
-3. **Install App**
+## Product flow
 
-The product goal is a dual-backend builder:
+1. Open a `project.godot`, Gradle file, project folder, or ZIP.
+2. Inspect and classify the source before execution.
+3. Install or repair the exact toolchain pack required by the project.
+4. Build, sign, verify, install, or share the output.
 
-- **APK payloads** → internal
-- **flat raw-source Android projects** → internal when supported
-- **Gradle / heavy / out-of-contract projects** → fallback backend
+PocketBuild is not a terminal wrapper and does not depend on Termux. Its runtime will supervise build jobs directly and expose structured progress through a native Android interface.
 
-This repository starts from a clean repo-based scaffold instead of the older Code Studio-shaped survival builds.
+## Current rewrite status
 
-## Current repo state
+The `rewrite/pocketbuild-v1` branch replaces the original scaffold with:
 
-This scaffold intentionally focuses on structure, documentation, and a clean Android app shell.
+- Kotlin and Jetpack Compose application shell
+- phone and foldable/tablet navigation layouts
+- Android `VIEW` and `SEND` file handling
+- `content://` metadata inspection
+- Godot, Gradle, PocketBuild recipe, and ZIP source classification
+- bounded ZIP inspection and zip-slip path rejection
+- initial toolchain, workspace, build, and signing model
+- unit tests for source classification and archive safety
 
-Included now:
-- Android app skeleton (`app/`)
-- Gradle Kotlin DSL root files
-- docs for architecture and roadmap
-- a minimal launcher activity with the Pocket Builder shell UI direction
+The first source slice intentionally stops before executing downloaded toolchains. See `docs/EXECUTION_MODEL.md` and `docs/ROADMAP.md`.
 
-Not included yet:
-- Gradle wrapper binaries
-- internal raw-source toolchain
-- fallback backend implementation
-- source import/build/install engine
+## Modules
 
-## Principles
-
-- keep the visible flow simple
-- keep backend complexity hidden behind a clean coordinator
-- prefer internal build paths when possible
-- only use an external backend when the project actually needs it
-
-## Next milestones
-
-- backend clean rebuild
-- readiness system
-- internal raw-source backend
-- fallback backend for Gradle/out-of-contract cases
+The first compiling slice remains one Android module while the core contracts settle. The code is already separated by package boundaries so it can be split into `core`, `runtime`, `builder-godot`, `builder-gradle`, and `signing` modules without rewriting behavior.
