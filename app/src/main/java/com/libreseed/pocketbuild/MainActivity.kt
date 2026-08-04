@@ -39,6 +39,7 @@ class MainActivity : ComponentActivity() {
                     onSourceSelected = viewModel::inspect,
                     onBuildRequested = viewModel::queueBuild,
                     onFolderSelected = viewModel::importProjectTree,
+                    onToolchainAction = viewModel::installOrVerifyToolchain,
                     onNoticeDismissed = viewModel::clearNotice,
                 )
             }
