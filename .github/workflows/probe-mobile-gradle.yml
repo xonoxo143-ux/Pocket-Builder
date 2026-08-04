@@ -1,0 +1,85 @@
+name: Probe mobile Gradle toolchain
+
+on:
+  push:
+    branches:
+      - feature/local-gradle-kotlin-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download OpenJDK package metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://packages-cf.termux.dev/apt/termux-main
+          curl -fsSL "$BASE/dists/stable/main/binary-aarch64/Packages.gz" -o /tmp/Packages.gz
+          python - <<'PY'
+          import gzip, re
+          text=gzip.open('/tmp/Packages.gz','rt',encoding='utf-8',errors='replace').read()
+          records=[]
+          for block in text.split('\n\n'):
+              fields={}
+              key=None
+              for line in block.splitlines():
+                  if line.startswith((' ','\t')) and key:
+                      fields[key]+=' '+line.strip()
+                  elif ': ' in line:
+                      key,val=line.split(': ',1); fields[key]=val
+              if fields.get('Package')=='openjdk-17':
+                  print('OPENJDK RECORD')
+                  for k in ('Package','Version','Architecture','Filename','Size','SHA256','Depends','Pre-Depends'):
+                      print(f'{k}: {fields.get(k)}')
+                  open('/tmp/openjdk_filename','w').write(fields['Filename'])
+                  break
+          else:
+              raise SystemExit('openjdk-17 not found')
+          PY
+          FILE=$(cat /tmp/openjdk_filename)
+          curl -fsSL "$BASE/$FILE" -o /tmp/openjdk.deb
+          dpkg-deb -I /tmp/openjdk.deb
+          echo '=== FILES ==='
+          dpkg-deb -c /tmp/openjdk.deb | head -200
+          rm -rf /tmp/jdk-root && mkdir /tmp/jdk-root
+          dpkg-deb -x /tmp/openjdk.deb /tmp/jdk-root
+          echo '=== TOP LEVEL ==='
+          find /tmp/jdk-root -maxdepth 7 -type f -o -type l | head -200
+          echo '=== PREFIX STRINGS ==='
+          grep -RIl '/data/data/com.termux/files/usr' /tmp/jdk-root 2>/dev/null | head -100 || true
+          find /tmp/jdk-root -type f -size -20M -print0 | xargs -0 -r strings 2>/dev/null | grep -m20 '/data/data/com.termux/files/usr' || true
+
+      - name: Inspect AndroidIDE mobile build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 \
+            https://github.com/AndroidIDEOfficial/androidide-tools/releases/download/v34.0.4/build-tools-34.0.4-aarch64.tar.xz \
+            -o /tmp/build-tools.tar.xz
+          mkdir -p /tmp/build-tools
+          tar -xJf /tmp/build-tools.tar.xz -C /tmp/build-tools
+          find /tmp/build-tools -maxdepth 5 -printf '%M %s %p\n' | head -250
+          echo '=== AAPT2 FILE ==='
+          AAPT=$(find /tmp/build-tools -type f -name aapt2 | head -1)
+          file "$AAPT"
+          readelf -d "$AAPT" | grep -E 'NEEDED|RPATH|RUNPATH' || true
+          strings "$AAPT" | grep -m20 '/data/data/' || true
+
+      - name: Inspect Android SDK base
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 \
+            https://github.com/AndroidIDEOfficial/androidide-tools/releases/download/sdk/android-sdk.tar.xz \
+            -o /tmp/android-sdk.tar.xz
+          mkdir -p /tmp/android-sdk
+          tar -xJf /tmp/android-sdk.tar.xz -C /tmp/android-sdk
+          find /tmp/android-sdk -maxdepth 4 -type f | head -250
+          du -sh /tmp/android-sdk /tmp/build-tools /tmp/jdk-root
