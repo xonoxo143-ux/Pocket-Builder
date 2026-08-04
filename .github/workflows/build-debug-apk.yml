@@ -14,7 +14,7 @@ concurrency:
 jobs:
   build-debug-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Check out source
@@ -45,31 +45,58 @@ jobs:
           gradle-version: "9.3.1"
           cache-read-only: false
 
-      - name: Build and test
+      - name: Download and verify official Godot 4.7 Android runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p godotTemplate/libs
+          curl --fail --location --retry 3 \
+            "https://github.com/godotengine/godot-builds/releases/download/4.7-stable/SHA512-SUMS.txt" \
+            --output godotTemplate/libs/SHA512-SUMS.txt
+          curl --fail --location --retry 3 \
+            "https://github.com/godotengine/godot-builds/releases/download/4.7-stable/godot-lib.4.7.stable.template_release.aar" \
+            --output godotTemplate/libs/godot-lib.aar
+          cd godotTemplate/libs
+          grep "  godot-lib.4.7.stable.template_release.aar$" SHA512-SUMS.txt \
+            | sed 's/godot-lib.4.7.stable.template_release.aar/godot-lib.aar/' \
+            | sha512sum --check --strict -
+
+      - name: Build embedded ARM64 Godot template
+        shell: bash
+        run: |
+          gradle --stacktrace :godotTemplate:assembleDebug
+          mkdir -p app/src/main/assets/templates
+          cp \
+            godotTemplate/build/outputs/apk/debug/godotTemplate-debug.apk \
+            app/src/main/assets/templates/godot-4.7-arm64-template.apk
+          test -s app/src/main/assets/templates/godot-4.7-arm64-template.apk
+
+      - name: Build and test PocketBuild
         shell: bash
         run: |
           gradle \
             --stacktrace \
-            testDebugUnitTest \
-            lintDebug \
-            assembleDebug
+            :app:testDebugUnitTest \
+            :app:lintDebug \
+            :app:assembleDebug
 
       - name: Record APK checksum
         shell: bash
         run: |
           mkdir -p ci-output
-          cp app/build/outputs/apk/debug/app-debug.apk ci-output/PocketBuild-debug.apk
-          sha256sum ci-output/PocketBuild-debug.apk > ci-output/SHA256SUMS.txt
+          cp app/build/outputs/apk/debug/app-debug.apk ci-output/PocketBuild-0.4.0-debug.apk
+          sha256sum ci-output/PocketBuild-0.4.0-debug.apk > ci-output/SHA256SUMS.txt
           {
             echo "commit=${GITHUB_SHA}"
             echo "run=${GITHUB_RUN_ID}"
+            echo "godot_runtime=4.7-stable-arm64"
             echo "built_utc=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           } > ci-output/BUILD_INFO.txt
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: PocketBuild-debug-apk
+          name: PocketBuild-0.4.0-apk
           path: ci-output/
           if-no-files-found: error
           retention-days: 14
