@@ -39,16 +39,16 @@ jobs:
             "build-tools;36.0.0" \
             "platform-tools"
 
-      - name: Cache Gradle data
+      - name: Set up pinned Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
+          gradle-version: "9.3.1"
           cache-read-only: false
 
       - name: Build and test
         shell: bash
         run: |
-          chmod +x gradlew
-          ./gradlew \
+          gradle \
             --stacktrace \
             testDebugUnitTest \
             lintDebug \
