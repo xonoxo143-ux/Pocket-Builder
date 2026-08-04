@@ -1,34 +1,50 @@
 # Roadmap
 
-## Phase 0 - Repo scaffold
-- set up clean Android app shell
-- add docs and product direction
-- freeze the simple visible flow
+## Slice 1 — application and source intake
 
-## Phase 1 - Backend clean rebuild
-- source importer
-- source classifier
-- contract checker
-- backend selector
-- build coordinator
+- responsive Compose shell
+- file associations and share handling
+- URI metadata inspection
+- source and archive classification
+- safe ZIP inspection
+- initial project/toolchain/build models
+- unit tests
 
-## Phase 2 - Readiness system
-- readiness checker
-- readiness items/report
-- internal toolchain validator
-- fallback backend readiness and probe checks
+## Slice 2 — persistent workspaces
 
-## Phase 3 - Internal raw-source backend
-- bundled toolchain management
-- internal raw-source executor
-- compile/package/sign pipeline
+- Storage Access Framework folder grants
+- recent and pinned projects
+- safe extraction with quotas
+- workspace snapshots and atomic replacement
+- project health reports
 
-## Phase 4 - Fallback backend cleanup
-- keep fallback backend focused on Gradle and out-of-contract cases
-- normalize callback/results
-- improve diagnostics
+## Slice 3 — toolchain manager
 
-## Phase 5 - Product polish
-- cleaner home card
-- better logs/output pages
-- advanced tools kept behind the drawer
+- signed pack manifests
+- trusted downloader with resume
+- disk planning, verification, repair and removal
+- foreground download work
+- offline pack import
+
+## Slice 4 — first complete builder
+
+- Godot project validation
+- version-matched Android export template pack
+- export preset generation
+- debug keystore and APK signing
+- APK verification, install and share
+
+## Slice 5 — controlled Gradle builder
+
+- project-root and wrapper inspection
+- repository/plugin/process safety report
+- JDK and Android SDK packs
+- build task selection
+- foreground process supervision
+- APK/AAB output collection
+
+## Slice 6 — native expansion
+
+- separately delivered executable runtime packs
+- optional NDK/CMake support
+- reusable PocketBuild Core integration with Godot Mobile
