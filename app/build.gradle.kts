@@ -11,8 +11,8 @@ android {
         applicationId = "com.libreseed.pocketbuild"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -68,9 +68,11 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.10.0")
     implementation("androidx.documentfile:documentfile:1.1.0")
+    implementation("androidx.webkit:webkit:1.16.0")
     implementation("com.android.tools.build:apksig:9.1.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
