@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/local-gradle-kotlin-v1
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -23,9 +24,8 @@ jobs:
           BASE=https://packages-cf.termux.dev/apt/termux-main
           curl -fsSL "$BASE/dists/stable/main/binary-aarch64/Packages.gz" -o /tmp/Packages.gz
           python - <<'PY'
-          import gzip, re
+          import gzip
           text=gzip.open('/tmp/Packages.gz','rt',encoding='utf-8',errors='replace').read()
-          records=[]
           for block in text.split('\n\n'):
               fields={}
               key=None
@@ -51,7 +51,7 @@ jobs:
           rm -rf /tmp/jdk-root && mkdir /tmp/jdk-root
           dpkg-deb -x /tmp/openjdk.deb /tmp/jdk-root
           echo '=== TOP LEVEL ==='
-          find /tmp/jdk-root -maxdepth 7 -type f -o -type l | head -200
+          find /tmp/jdk-root -maxdepth 7 \( -type f -o -type l \) | head -200
           echo '=== PREFIX STRINGS ==='
           grep -RIl '/data/data/com.termux/files/usr' /tmp/jdk-root 2>/dev/null | head -100 || true
           find /tmp/jdk-root -type f -size -20M -print0 | xargs -0 -r strings 2>/dev/null | grep -m20 '/data/data/com.termux/files/usr' || true
