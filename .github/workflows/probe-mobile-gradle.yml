@@ -1,9 +1,6 @@
 name: Probe mobile Gradle toolchain
 
 on:
-  push:
-    branches:
-      - feature/local-gradle-kotlin-v1
   pull_request:
   workflow_dispatch:
 
@@ -13,64 +10,115 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download OpenJDK package metadata
+      - name: Resolve and inspect ARM64 OpenJDK runtime
         shell: bash
         run: |
           set -euo pipefail
           BASE=https://packages-cf.termux.dev/apt/termux-main
           curl -fsSL "$BASE/dists/stable/main/binary-aarch64/Packages.gz" -o /tmp/Packages.gz
+          rm -rf /tmp/debs /tmp/mobile-root
+          mkdir -p /tmp/debs /tmp/mobile-root
           python - <<'PY'
-          import gzip
+          import gzip, hashlib, pathlib, re, urllib.request
+
+          base='https://packages-cf.termux.dev/apt/termux-main/'
           text=gzip.open('/tmp/Packages.gz','rt',encoding='utf-8',errors='replace').read()
+          records={}
           for block in text.split('\n\n'):
-              fields={}
-              key=None
+              fields={}; key=None
               for line in block.splitlines():
                   if line.startswith((' ','\t')) and key:
                       fields[key]+=' '+line.strip()
                   elif ': ' in line:
                       key,val=line.split(': ',1); fields[key]=val
-              if fields.get('Package')=='openjdk-17':
-                  print('OPENJDK RECORD')
-                  for k in ('Package','Version','Architecture','Filename','Size','SHA256','Depends','Pre-Depends'):
-                      print(f'{k}: {fields.get(k)}')
-                  open('/tmp/openjdk_filename','w').write(fields['Filename'])
-                  break
-          else:
-              raise SystemExit('openjdk-17 not found')
-          PY
-          FILE=$(cat /tmp/openjdk_filename)
-          curl -fsSL "$BASE/$FILE" -o /tmp/openjdk.deb
-          dpkg-deb -I /tmp/openjdk.deb
-          echo '=== FILES ==='
-          dpkg-deb -c /tmp/openjdk.deb | head -200
-          rm -rf /tmp/jdk-root && mkdir /tmp/jdk-root
-          dpkg-deb -x /tmp/openjdk.deb /tmp/jdk-root
-          echo '=== TOP LEVEL ==='
-          find /tmp/jdk-root -maxdepth 7 \( -type f -o -type l \) | head -200
-          echo '=== PREFIX STRINGS ==='
-          grep -RIl '/data/data/com.termux/files/usr' /tmp/jdk-root 2>/dev/null | head -100 || true
-          find /tmp/jdk-root -type f -size -20M -print0 | xargs -0 -r strings 2>/dev/null | grep -m20 '/data/data/com.termux/files/usr' || true
+              name=fields.get('Package')
+              if name: records[name]=fields
 
-      - name: Inspect AndroidIDE mobile build tools
+          def dependency_names(value):
+              if not value: return []
+              names=[]
+              for group in value.split(','):
+                  alternatives=[]
+                  for raw in group.split('|'):
+                      name=re.split(r'\s|\(',raw.strip(),1)[0]
+                      name=name.split(':',1)[0]
+                      if name: alternatives.append(name)
+                  selected=next((n for n in alternatives if n in records),None)
+                  if selected: names.append(selected)
+              return names
+
+          requested=['openjdk-17']
+          ordered=[]; seen=set()
+          while requested:
+              name=requested.pop(0)
+              if name in seen: continue
+              record=records.get(name)
+              if record is None:
+                  print('SKIP unavailable dependency',name)
+                  continue
+              seen.add(name); ordered.append(name)
+              requested.extend(dependency_names(record.get('Pre-Depends')))
+              requested.extend(dependency_names(record.get('Depends')))
+
+          for name in ordered:
+              r=records[name]
+              target=pathlib.Path('/tmp/debs')/pathlib.Path(r['Filename']).name
+              print(f"{name} {r.get('Version')} {r.get('Size')} {r.get('SHA256')}")
+              urllib.request.urlretrieve(base+r['Filename'],target)
+              digest=hashlib.sha256(target.read_bytes()).hexdigest()
+              if digest.lower()!=r['SHA256'].lower():
+                  raise SystemExit(f'checksum mismatch for {name}')
+          pathlib.Path('/tmp/package-order.txt').write_text('\n'.join(ordered)+'\n')
+          PY
+
+          while read -r package; do
+            deb=$(find /tmp/debs -maxdepth 1 -type f -name "${package}_*.deb" -print -quit)
+            test -n "$deb"
+            dpkg-deb -x "$deb" /tmp/mobile-root
+          done < /tmp/package-order.txt
+
+          find /tmp/mobile-root -printf '%M %s %p\n' > /tmp/mobile-root-files.txt
+          sed -n '1,240p' /tmp/mobile-root-files.txt
+          echo '=== PACKAGE SET ==='
+          cat /tmp/package-order.txt
+          echo '=== JAVA ELF ==='
+          JAVA=/tmp/mobile-root/data/data/com.termux/files/usr/lib/jvm/java-17-openjdk/bin/java
+          file "$JAVA"
+          readelf -l "$JAVA" | grep -E 'interpreter|INTERP' || true
+          readelf -d "$JAVA" | grep -E 'NEEDED|RPATH|RUNPATH' || true
+          echo '=== JDK PREFIX REFERENCES ==='
+          grep -RIl '/data/data/com.termux/files/usr' /tmp/mobile-root 2>/dev/null > /tmp/prefix-files.txt || true
+          sed -n '1,120p' /tmp/prefix-files.txt
+          echo '=== SIZE ==='
+          du -sh /tmp/debs /tmp/mobile-root
+
+      - name: Inspect AndroidIDE ARM64 build tools
         shell: bash
         run: |
           set -euo pipefail
           curl -fL --retry 3 \
             https://github.com/AndroidIDEOfficial/androidide-tools/releases/download/v34.0.4/build-tools-34.0.4-aarch64.tar.xz \
             -o /tmp/build-tools.tar.xz
-          mkdir -p /tmp/build-tools
+          echo "build-tools-sha256=$(sha256sum /tmp/build-tools.tar.xz | cut -d' ' -f1)"
+          rm -rf /tmp/build-tools && mkdir -p /tmp/build-tools
           tar -xJf /tmp/build-tools.tar.xz -C /tmp/build-tools
-          find /tmp/build-tools -maxdepth 5 -printf '%M %s %p\n' | head -250
-          echo '=== AAPT2 FILE ==='
-          AAPT=$(find /tmp/build-tools -type f -name aapt2 | head -1)
-          file "$AAPT"
-          readelf -d "$AAPT" | grep -E 'NEEDED|RPATH|RUNPATH' || true
-          strings "$AAPT" | grep -m20 '/data/data/' || true
+          find /tmp/build-tools -maxdepth 6 -printf '%M %s %p\n' > /tmp/build-tools-files.txt
+          sed -n '1,300p' /tmp/build-tools-files.txt
+          echo '=== EXECUTABLE LINKAGE ==='
+          while IFS= read -r binary; do
+            echo "--- $binary"
+            file "$binary"
+            readelf -l "$binary" 2>/dev/null | grep -E 'interpreter|INTERP' || true
+            readelf -d "$binary" 2>/dev/null | grep -E 'NEEDED|RPATH|RUNPATH' || true
+          done < <(find /tmp/build-tools -type f -perm /111 | sort)
+          echo '=== PREFIX REFERENCES ==='
+          grep -RIl '/data/data/' /tmp/build-tools 2>/dev/null > /tmp/build-prefix-files.txt || true
+          sed -n '1,100p' /tmp/build-prefix-files.txt
+          du -sh /tmp/build-tools.tar.xz /tmp/build-tools
 
       - name: Inspect Android SDK base
         shell: bash
@@ -79,7 +127,9 @@ jobs:
           curl -fL --retry 3 \
             https://github.com/AndroidIDEOfficial/androidide-tools/releases/download/sdk/android-sdk.tar.xz \
             -o /tmp/android-sdk.tar.xz
-          mkdir -p /tmp/android-sdk
+          echo "android-sdk-sha256=$(sha256sum /tmp/android-sdk.tar.xz | cut -d' ' -f1)"
+          rm -rf /tmp/android-sdk && mkdir -p /tmp/android-sdk
           tar -xJf /tmp/android-sdk.tar.xz -C /tmp/android-sdk
-          find /tmp/android-sdk -maxdepth 4 -type f | head -250
-          du -sh /tmp/android-sdk /tmp/build-tools /tmp/jdk-root
+          find /tmp/android-sdk -maxdepth 5 -type f > /tmp/android-sdk-files.txt
+          sed -n '1,300p' /tmp/android-sdk-files.txt
+          du -sh /tmp/android-sdk.tar.xz /tmp/android-sdk
