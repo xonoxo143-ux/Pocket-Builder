@@ -722,7 +722,7 @@ class MobileGradleToolchain(private val context: Context) {
         private const val BUILD_TOOLS_VERSION = "34.0.4"
         private const val BUILD_TOOLS_URL = "https://github.com/AndroidIDEOfficial/androidide-tools/releases/download/v34.0.4/build-tools-34.0.4-aarch64.tar.xz"
         // Filled from the release probe in CI. A blank value still uses HTTPS and archive validation.
-        private const val BUILD_TOOLS_SHA256 = ""
+        private const val BUILD_TOOLS_SHA256 = "4bbbdeee608ff8d3a2c1534d0a5270305a02b1f200403a536c75ac84c41e52fa"
         private const val DEFAULT_PLATFORM = 36
         private const val MIN_PLATFORM = 21
         private const val MAX_PLATFORM = 36
