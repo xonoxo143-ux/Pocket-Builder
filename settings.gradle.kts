@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "PocketBuilder"
+rootProject.name = "PocketBuild"
 include(":app")
