@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "PocketBuild"
 include(":app")
+include(":godotTemplate")
