@@ -47,6 +47,7 @@ data class BuildSummary(
     val status: String,
     val outputName: String?,
     val detail: String,
+    val outputPath: String? = null,
 )
 
 data class WorkspaceSummary(
