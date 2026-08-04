@@ -1,70 +1,37 @@
 # Architecture
 
-Pocket Builder is organized around a simple product flow and a layered backend.
+## Boundaries
 
-## User flow
+PocketBuild is organized around six responsibilities:
 
-1. **Select Source**
-2. **Build App**
-3. **Install App**
+1. **Source intake** — Android intents, Storage Access Framework, metadata, safe archive inspection, workspace import.
+2. **Project model** — project type, root, requested outputs, compatibility and security findings.
+3. **Toolchain manager** — signed manifests, trusted downloads, verification, installation, repair and removal.
+4. **Build coordinator** — recipe selection, readiness checks, job staging, cancellation and progress events.
+5. **Execution runtime** — private workspace, controlled environment, child process supervision and structured logs.
+6. **Output manager** — signing, APK verification, history, sharing and Android package-installer handoff.
 
-The UI should stay simple even when the backend is not.
+The UI observes models and build events. It does not parse command output to infer state.
 
-## Target backend model
+## Initial package map
 
-- **APK payloads** -> internal
-- **flat raw-source Android projects** -> internal when supported
-- **Gradle / heavy / out-of-contract projects** -> fallback backend
+- `model/` — stable UI-independent data models
+- `source/` — pure source classification and Android URI inspection
+- `ui/` — responsive Compose screens
+- `PocketBuildViewModel` — temporary coordinator facade for the first slice
 
-## Layer plan
+As execution work begins, these boundaries become separate Gradle modules.
 
-### App/UI layer
-Owns:
-- main screen
-- drawer/navigation
-- status cards
-- progress/error display
-- install flow
+## Builder recipes
 
-### Source layer
-Owns:
-- pick zip/folder/apk
-- import
-- unzip
-- normalize root
-- classify source
+A builder recipe declares:
 
-### Backend selection layer
-Owns:
-- choose internal vs fallback backend
-- explain why
-- expose selected backend to UI
+- markers used to recognize a project
+- compatible project and toolchain versions
+- required packs
+- safety capabilities
+- build stages
+- expected outputs
+- post-build verification
 
-### Readiness layer
-Owns:
-- internal toolchain readiness
-- fallback backend readiness
-- permissions/setup checks
-- probe checks
-- blocked/warning/ready reporting
-
-### Internal build layer
-Owns:
-- raw-source contract checking
-- internal toolchain state
-- internal raw-source executor
-- APK staging/install support
-
-### Fallback backend layer
-Owns:
-- external backend integration only
-- probes
-- dispatch
-- callback/result parsing
-
-## Guiding rules
-
-- Keep the main flow tiny.
-- Move complexity into the coordinator and backend layers.
-- Prefer internal paths when the app can honestly support them.
-- Only use the fallback backend when the project actually needs it.
+The first complete recipe will be a basic Godot Android APK export using a matching precompiled export template. Generic Gradle execution comes after the constrained Godot path works.
