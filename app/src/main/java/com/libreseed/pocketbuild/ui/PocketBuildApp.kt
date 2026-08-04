@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -49,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.libreseed.pocketbuild.PocketBuildUiState
 import com.libreseed.pocketbuild.model.IncomingSource
+import com.libreseed.pocketbuild.model.SourceContainer
 import com.libreseed.pocketbuild.model.SourceKind
 import com.libreseed.pocketbuild.model.ToolchainPackSummary
 import com.libreseed.pocketbuild.model.ToolchainState
@@ -66,12 +68,16 @@ fun PocketBuildApp(
     state: PocketBuildUiState,
     onSourceSelected: (Uri) -> Unit,
     onBuildRequested: () -> Unit,
+    onFolderSelected: (Uri) -> Unit,
     onNoticeDismissed: () -> Unit,
 ) {
     var destination by remember { mutableStateOf(Destination.HOME) }
     val snackbarHostState = remember { SnackbarHostState() }
     val sourcePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(onSourceSelected)
+    }
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri?.let(onFolderSelected)
     }
 
     LaunchedEffect(state.notice) {
@@ -91,6 +97,7 @@ fun PocketBuildApp(
                     state = state,
                     onOpenSource = { sourcePicker.launch(arrayOf("*/*")) },
                     onBuildRequested = onBuildRequested,
+                    onGrantFolder = { folderPicker.launch(null) },
                     snackbarHostState = snackbarHostState,
                     hostSnackbarInline = true,
                 )
@@ -117,6 +124,7 @@ fun PocketBuildApp(
                     state = state,
                     onOpenSource = { sourcePicker.launch(arrayOf("*/*")) },
                     onBuildRequested = onBuildRequested,
+                    onGrantFolder = { folderPicker.launch(null) },
                     snackbarHostState = snackbarHostState,
                     hostSnackbarInline = false,
                 )
@@ -160,13 +168,14 @@ private fun AppContent(
     state: PocketBuildUiState,
     onOpenSource: () -> Unit,
     onBuildRequested: () -> Unit,
+    onGrantFolder: () -> Unit,
     snackbarHostState: SnackbarHostState,
     hostSnackbarInline: Boolean,
 ) {
     Box(modifier.fillMaxSize()) {
         when (destination) {
-            Destination.HOME -> HomeScreen(state, onOpenSource, onBuildRequested)
-            Destination.PROJECTS -> ProjectsScreen(state, onOpenSource, onBuildRequested)
+            Destination.HOME -> HomeScreen(state, onOpenSource, onBuildRequested, onGrantFolder)
+            Destination.PROJECTS -> ProjectsScreen(state, onOpenSource, onBuildRequested, onGrantFolder)
             Destination.BUILDS -> BuildsScreen(state)
             Destination.TOOLCHAINS -> ToolchainsScreen(state.toolchains)
             Destination.SETTINGS -> SettingsScreen()
@@ -178,7 +187,12 @@ private fun AppContent(
 }
 
 @Composable
-private fun HomeScreen(state: PocketBuildUiState, onOpenSource: () -> Unit, onBuildRequested: () -> Unit) {
+private fun HomeScreen(
+    state: PocketBuildUiState,
+    onOpenSource: () -> Unit,
+    onBuildRequested: () -> Unit,
+    onGrantFolder: () -> Unit,
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp),
@@ -194,7 +208,7 @@ private fun HomeScreen(state: PocketBuildUiState, onOpenSource: () -> Unit, onBu
         }
         item { OpenSourceCard(state.isInspecting, onOpenSource) }
         state.selectedSource?.let { source ->
-            item { SourceCard(source, onBuildRequested) }
+            item { SourceCard(source, state, onBuildRequested, onGrantFolder) }
         }
         item {
             SectionTitle("Toolchain readiness")
@@ -244,7 +258,12 @@ private fun OpenSourceCard(isInspecting: Boolean, onOpenSource: () -> Unit) {
 }
 
 @Composable
-private fun SourceCard(source: IncomingSource, onBuildRequested: () -> Unit) {
+private fun SourceCard(
+    source: IncomingSource,
+    state: PocketBuildUiState,
+    onBuildRequested: () -> Unit,
+    onGrantFolder: () -> Unit,
+) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -252,20 +271,36 @@ private fun SourceCard(source: IncomingSource, onBuildRequested: () -> Unit) {
                     Text(source.displayName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(source.kind.displayName, color = MaterialTheme.colorScheme.primary)
                 }
-                TextButton(onClick = onBuildRequested, enabled = source.kind != SourceKind.UNKNOWN) {
-                    Text("Build APK")
+                val needsFolder = source.container == SourceContainer.SINGLE_FILE && state.workspace == null
+                TextButton(
+                    onClick = if (needsFolder) onGrantFolder else onBuildRequested,
+                    enabled = source.kind != SourceKind.UNKNOWN && !state.isPreparingWorkspace,
+                ) {
+                    Text(if (needsFolder) "Grant folder" else if (state.workspace == null) "Prepare" else "Continue")
                 }
             }
             source.projectRootHint?.let { Text("Project root: ${it.ifBlank { "/" }}") }
             source.warnings.forEach { warning ->
                 Text(warning, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
+            state.workspace?.let { workspace ->
+                Text(
+                    "Workspace ready: ${workspace.importedFiles} files",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun ProjectsScreen(state: PocketBuildUiState, onOpenSource: () -> Unit, onBuildRequested: () -> Unit) {
+private fun ProjectsScreen(
+    state: PocketBuildUiState,
+    onOpenSource: () -> Unit,
+    onBuildRequested: () -> Unit,
+    onGrantFolder: () -> Unit,
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp),
@@ -273,7 +308,7 @@ private fun ProjectsScreen(state: PocketBuildUiState, onOpenSource: () -> Unit, 
     ) {
         item { ScreenHeader("Projects", "Imported and recently opened build workspaces") }
         item { Button(onClick = onOpenSource) { Text("Import project") } }
-        state.selectedSource?.let { item { SourceCard(it, onBuildRequested) } }
+        state.selectedSource?.let { item { SourceCard(it, state, onBuildRequested, onGrantFolder) } }
             ?: item { EmptyCard("No projects yet", "Open a project file or ZIP to create the first workspace.") }
     }
 }
@@ -364,7 +399,12 @@ private fun SettingsScreen() {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item { ScreenHeader("Settings", "Downloads, storage, signing and build safety") }
-        item { EmptyCard("Defaults are conservative", "Large downloads require confirmation. Unknown Gradle projects will be inspected before execution.") }
+        item {
+            EmptyCard(
+                "Defaults are conservative",
+                "Large downloads require confirmation. Unknown Gradle projects will be inspected before execution.",
+            )
+        }
     }
 }
 
