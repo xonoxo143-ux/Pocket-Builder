@@ -23,6 +23,15 @@ class AndroidGradleProjectBuilder(private val context: Context) {
 
     fun isToolchainReady(): Boolean = toolchain.isReady()
 
+    fun installToolchain(
+        requiredPlatforms: Set<Int> = setOf(36),
+        onProgress: (Progress) -> Unit = {},
+    ): MobileGradleEnvironment {
+        return toolchain.ensureInstalled(requiredPlatforms) { progress ->
+            onProgress(Progress(progress.stage, progress.detail, progress.fraction))
+        }
+    }
+
     fun build(
         workspace: WorkspaceSummary,
         cancelled: AtomicBoolean = AtomicBoolean(false),
