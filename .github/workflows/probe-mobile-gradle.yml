@@ -19,7 +19,7 @@ jobs:
         run: |
           set -euo pipefail
           BASE=https://packages-cf.termux.dev/apt/termux-main
-          curl -fsSL "$BASE/dists/stable/main/binary-aarch64/Packages.gz" -o /tmp/Packages.gz
+          curl -A 'PocketHost-CI/0.6' -fsSL "$BASE/dists/stable/main/binary-aarch64/Packages.gz" -o /tmp/Packages.gz
           rm -rf /tmp/debs /tmp/mobile-root
           mkdir -p /tmp/debs /tmp/mobile-root
           python - <<'PY'
@@ -44,8 +44,7 @@ jobs:
               for group in value.split(','):
                   alternatives=[]
                   for raw in group.split('|'):
-                      name=re.split(r'\s|\(',raw.strip(),1)[0]
-                      name=name.split(':',1)[0]
+                      name=re.split(r'\s|\(',raw.strip(),1)[0].split(':',1)[0]
                       if name: alternatives.append(name)
                   selected=next((n for n in alternatives if n in records),None)
                   if selected: names.append(selected)
@@ -64,11 +63,17 @@ jobs:
               requested.extend(dependency_names(record.get('Pre-Depends')))
               requested.extend(dependency_names(record.get('Depends')))
 
+          opener=urllib.request.build_opener()
+          opener.addheaders=[('User-Agent','PocketHost-CI/0.6')]
           for name in ordered:
               r=records[name]
               target=pathlib.Path('/tmp/debs')/pathlib.Path(r['Filename']).name
               print(f"{name} {r.get('Version')} {r.get('Size')} {r.get('SHA256')}")
-              urllib.request.urlretrieve(base+r['Filename'],target)
+              with opener.open(base+r['Filename']) as response, target.open('wb') as output:
+                  while True:
+                      chunk=response.read(1024*1024)
+                      if not chunk: break
+                      output.write(chunk)
               digest=hashlib.sha256(target.read_bytes()).hexdigest()
               if digest.lower()!=r['SHA256'].lower():
                   raise SystemExit(f'checksum mismatch for {name}')
@@ -100,7 +105,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fL --retry 3 \
+          curl -A 'PocketHost-CI/0.6' -fL --retry 3 \
             https://github.com/AndroidIDEOfficial/androidide-tools/releases/download/v34.0.4/build-tools-34.0.4-aarch64.tar.xz \
             -o /tmp/build-tools.tar.xz
           echo "build-tools-sha256=$(sha256sum /tmp/build-tools.tar.xz | cut -d' ' -f1)"
@@ -124,7 +129,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fL --retry 3 \
+          curl -A 'PocketHost-CI/0.6' -fL --retry 3 \
             https://github.com/AndroidIDEOfficial/androidide-tools/releases/download/sdk/android-sdk.tar.xz \
             -o /tmp/android-sdk.tar.xz
           echo "android-sdk-sha256=$(sha256sum /tmp/android-sdk.tar.xz | cut -d' ' -f1)"
