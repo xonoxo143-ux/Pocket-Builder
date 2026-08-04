@@ -1,23 +1,32 @@
-# Gradle
+# Gradle and Android
 .gradle/
 build/
 **/build/
+local.properties
+.cxx/
+.externalNativeBuild/
 
-# IntelliJ / Android Studio
+# IDE
 .idea/
 *.iml
-local.properties
 captures/
 
-# Kotlin / Gradle persistent data
+# Kotlin
 .kotlin/
 
-# OS files
-.DS_Store
-Thumbs.db
-
-# Generated signing/output artifacts
+# Generated packages and signing material
 *.apk
 *.aab
 *.ap_
+*.jks
+*.keystore
 output-metadata.json
+
+# PocketBuild local runtime data
+.toolchains/
+.workspaces/
+.build-cache/
+
+# OS
+.DS_Store
+Thumbs.db
