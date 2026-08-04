@@ -1,0 +1,38 @@
+name: Verify source
+
+on:
+  push:
+    branches:
+      - main
+      - rewrite/**
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  source-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required files
+        run: |
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/src/main/java/com/libreseed/pocketbuild/MainActivity.kt
+          test -f docs/SECURITY_MODEL.md
+          test -f docs/EXECUTION_MODEL.md
+      - name: Reject committed outputs and secrets
+        run: |
+          if find . -type f \( -name '*.apk' -o -name '*.aab' -o -name '*.jks' -o -name '*.keystore' \) -not -path './.git/*' | grep -q .; then
+            echo 'Generated packages or signing material must not be committed.'
+            exit 1
+          fi
+      - name: Validate XML files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for path in Path('app/src/main').rglob('*.xml'):
+              ET.parse(path)
+              print(f'validated {path}')
+          PY
