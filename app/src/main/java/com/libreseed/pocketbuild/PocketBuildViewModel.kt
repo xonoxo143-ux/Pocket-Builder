@@ -6,9 +6,11 @@ import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.libreseed.pocketbuild.godot.GodotProjectBuilder
 import com.libreseed.pocketbuild.model.BuildSummary
 import com.libreseed.pocketbuild.model.IncomingSource
 import com.libreseed.pocketbuild.model.SourceContainer
+import com.libreseed.pocketbuild.model.SourceKind
 import com.libreseed.pocketbuild.model.ToolchainPackSummary
 import com.libreseed.pocketbuild.model.ToolchainState
 import com.libreseed.pocketbuild.model.WorkspaceSummary
@@ -25,6 +27,7 @@ import kotlinx.coroutines.withContext
 class PocketBuildViewModel(application: Application) : AndroidViewModel(application) {
     private val inspector = AndroidSourceInspector(application)
     private val workspaceManager = WorkspaceManager(application)
+    private val godotBuilder = GodotProjectBuilder(application)
     private val _uiState = MutableStateFlow(PocketBuildUiState())
     val uiState: StateFlow<PocketBuildUiState> = _uiState.asStateFlow()
 
@@ -47,11 +50,14 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun inspect(uri: Uri) {
+        if (_uiState.value.isBuilding) return
         _uiState.update {
             it.copy(
                 isInspecting = true,
                 selectedSource = null,
                 workspace = null,
+                latestBuild = null,
+                completedOutputPath = null,
                 needsFolderGrant = false,
                 notice = "Inspecting source…",
             )
@@ -78,19 +84,21 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun queueBuild() {
-        val source = _uiState.value.selectedSource ?: return
-        if (_uiState.value.workspace != null) {
+        val state = _uiState.value
+        val source = state.selectedSource ?: return
+        if (state.isBuilding || state.isPreparingWorkspace) return
+        if (source.kind != SourceKind.GODOT) {
             _uiState.update {
                 it.copy(
-                    latestBuild = BuildSummary(
-                        projectName = source.displayName,
-                        status = "Waiting for builder pack",
-                        outputName = null,
-                        detail = "The private workspace is ready. Toolchain installation and execution are the next implementation slice.",
-                    ),
-                    notice = "Workspace is ready; the builder runtime is not connected yet.",
+                    latestBuild = BuildSummary(source.displayName, "Unsupported", null, "This APK currently builds Godot projects."),
+                    notice = "Choose a Godot project or Godot project ZIP.",
                 )
             }
+            return
+        }
+
+        state.workspace?.let { workspace ->
+            startBuild(source, workspace)
             return
         }
         if (source.container != SourceContainer.ARCHIVE) {
@@ -107,6 +115,7 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
 
     fun importProjectTree(uri: Uri) {
         val source = _uiState.value.selectedSource ?: return
+        if (_uiState.value.isBuilding) return
         _uiState.update {
             it.copy(
                 isPreparingWorkspace = true,
@@ -157,11 +166,12 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
                         projectName = source.displayName,
                         status = "Workspace ready",
                         outputName = null,
-                        detail = "Imported ${workspace.importedFiles} files. Builder execution is the next stage.",
+                        detail = "Imported ${workspace.importedFiles} files. Starting the APK build.",
                     ),
                     notice = "Workspace prepared successfully.",
                 )
             }
+            startBuild(source, workspace)
         }.onFailure { error ->
             _uiState.update {
                 it.copy(
@@ -178,40 +188,128 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    private fun startBuild(source: IncomingSource, workspace: WorkspaceSummary) {
+        if (_uiState.value.isBuilding) return
+        _uiState.update {
+            it.copy(
+                isBuilding = true,
+                buildProgress = 0f,
+                buildStage = "Starting build",
+                completedOutputPath = null,
+                latestBuild = BuildSummary(
+                    source.displayName,
+                    "Building",
+                    null,
+                    "Preparing the bundled Godot 4.7 ARM64 runtime.",
+                ),
+                notice = "Building APK on this device…",
+            )
+        }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    godotBuilder.build(workspace) { progress ->
+                        _uiState.update { state ->
+                            state.copy(
+                                buildProgress = progress.fraction,
+                                buildStage = progress.stage,
+                                latestBuild = BuildSummary(
+                                    source.displayName,
+                                    progress.stage,
+                                    null,
+                                    progress.detail,
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+            result.onSuccess { artifact ->
+                val detail = "Packed ${artifact.packedFiles} files (${formatBytes(artifact.sourceBytes)}). Tap through Android's installer to install the game."
+                _uiState.update {
+                    it.copy(
+                        isBuilding = false,
+                        buildProgress = 1f,
+                        buildStage = "APK ready",
+                        latestBuild = BuildSummary(
+                            projectName = source.displayName,
+                            status = "APK ready",
+                            outputName = artifact.file.name,
+                            detail = detail,
+                            outputPath = artifact.file.absolutePath,
+                        ),
+                        completedOutputPath = artifact.file.absolutePath,
+                        notice = "APK created and signature verified.",
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isBuilding = false,
+                        buildProgress = null,
+                        buildStage = null,
+                        latestBuild = BuildSummary(
+                            source.displayName,
+                            "Build failed",
+                            null,
+                            error.message ?: "Godot APK build failed.",
+                        ),
+                        notice = error.message ?: "Godot APK build failed.",
+                    )
+                }
+            }
+        }
+    }
+
+    fun consumeCompletedOutput() {
+        _uiState.update { it.copy(completedOutputPath = null) }
+    }
+
     fun clearNotice() {
         _uiState.update { it.copy(notice = null) }
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        if (bytes < 1024) return "$bytes B"
+        val kib = bytes / 1024.0
+        if (kib < 1024) return "%.1f KiB".format(kib)
+        return "%.1f MiB".format(kib / 1024.0)
     }
 }
 
 data class PocketBuildUiState(
     val isInspecting: Boolean = false,
     val isPreparingWorkspace: Boolean = false,
+    val isBuilding: Boolean = false,
+    val buildProgress: Float? = null,
+    val buildStage: String? = null,
     val needsFolderGrant: Boolean = false,
     val selectedSource: IncomingSource? = null,
     val latestBuild: BuildSummary? = null,
     val workspace: WorkspaceSummary? = null,
+    val completedOutputPath: String? = null,
     val notice: String? = null,
     val toolchains: List<ToolchainPackSummary> = listOf(
         ToolchainPackSummary(
             id = "core",
             title = "PocketBuild Core",
-            subtitle = "Source inspection, workspaces, signing and install flow",
+            subtitle = "Secure source import, private workspaces and output handling",
             sizeLabel = "Bundled",
             state = ToolchainState.READY,
         ),
         ToolchainPackSummary(
-            id = "godot-4.7-export",
-            title = "Godot 4.7 Export Pack",
-            subtitle = "Prebuilt Android templates for fast Godot APK exports",
-            sizeLabel = "Not installed",
-            state = ToolchainState.MISSING,
+            id = "godot-4.7-arm64",
+            title = "Godot 4.7 ARM64 Runtime",
+            subtitle = "Official Godot runtime used to produce standalone game APKs",
+            sizeLabel = "Bundled",
+            state = ToolchainState.READY,
         ),
         ToolchainPackSummary(
-            id = "android-gradle",
-            title = "Android Gradle Pack",
-            subtitle = "JDK, SDK, Build Tools and Gradle runtime",
-            sizeLabel = "Not installed",
-            state = ToolchainState.MISSING,
+            id = "local-signing",
+            title = "Local APK Signing",
+            subtitle = "Persistent signing key protected by Android Keystore",
+            sizeLabel = "Ready",
+            state = ToolchainState.READY,
         ),
     ),
 )
