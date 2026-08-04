@@ -10,12 +10,19 @@ enum class SourceKind(val displayName: String) {
     UNKNOWN("Unsupported source"),
 }
 
+enum class SourceContainer {
+    SINGLE_FILE,
+    ARCHIVE,
+    DIRECTORY,
+}
+
 data class IncomingSource(
     val uri: Uri,
     val displayName: String,
     val mimeType: String?,
     val sizeBytes: Long?,
     val kind: SourceKind,
+    val container: SourceContainer = SourceContainer.SINGLE_FILE,
     val projectRootHint: String? = null,
     val warnings: List<String> = emptyList(),
 )
@@ -40,4 +47,13 @@ data class BuildSummary(
     val status: String,
     val outputName: String?,
     val detail: String,
+)
+
+data class WorkspaceSummary(
+    val id: String,
+    val displayName: String,
+    val sourceKind: SourceKind,
+    val rootPath: String,
+    val importedFiles: Int,
+    val importedBytes: Long,
 )
