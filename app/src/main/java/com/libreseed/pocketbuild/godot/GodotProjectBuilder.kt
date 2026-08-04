@@ -36,7 +36,7 @@ class GodotProjectBuilder(private val context: Context) {
         try {
             onProgress(Progress("Preparing template", "Loading the bundled Godot 4.7 runtime.", 0.03f))
             context.assets.open(TEMPLATE_ASSET).use { input ->
-                templateApk.outputStream().buffered().use(input::copyTo)
+                templateApk.outputStream().buffered().use { output -> input.copyTo(output) }
             }
             check(templateApk.length() > 0) { "The bundled Godot runtime template is empty." }
 
