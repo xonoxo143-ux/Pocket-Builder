@@ -124,11 +124,20 @@ jobs:
       - name: Build, test, and lint PocketHost
         shell: bash
         run: |
+          set +e
           gradle \
             --stacktrace \
             :app:testDebugUnitTest \
             :app:lintDebug \
             :app:assembleDebug
+          STATUS=$?
+          REPORT="app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt"
+          if [ -f "$REPORT" ]; then
+            echo "===== COMPLETE ANDROID LINT REPORT ====="
+            cat "$REPORT"
+            echo "===== END ANDROID LINT REPORT ====="
+          fi
+          exit "$STATUS"
 
       - name: Inspect APK
         shell: bash
