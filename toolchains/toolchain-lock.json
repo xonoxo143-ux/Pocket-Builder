@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "catalogVersion": 1,
+  "packs": [
+    {
+      "id": "godot-4.7-export-android",
+      "version": "4.7.0",
+      "status": "planned",
+      "architectures": ["arm64-v8a"],
+      "sources": ["official-godot-release"],
+      "files": []
+    },
+    {
+      "id": "android-gradle-basic",
+      "version": "1",
+      "status": "planned",
+      "architectures": ["arm64-v8a"],
+      "sources": ["google-android", "gradle", "maven-central"],
+      "files": []
+    }
+  ]
+}
