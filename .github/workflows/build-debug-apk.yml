@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: pockethost-debug-${{ github.event.pull_request.number || github.ref }}
@@ -17,58 +17,8 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Check out source branch
+      - name: Check out source
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
-          persist-credentials: true
-
-      - name: Repair embedded runtime source
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          replacements = {
-              Path("app/src/main/java/com/libreseed/pocketbuild/host/HostCore.kt"): [
-                  (
-                      "ctx.fillStyle=`hsla(${(i*31+t*180)%360},80%,60%,.18)`;",
-                      "ctx.fillStyle='hsla('+((i*31+t*180)%360)+',80%,60%,.18)';",
-                  ),
-              ],
-              Path("app/src/main/java/com/libreseed/pocketbuild/host/RuntimeActivity.kt"): [
-                  (
-                      "const id = `${Date.now().toString(36)}-${(++sequence).toString(36)}`;",
-                      "const id = Date.now().toString(36) + '-' + (++sequence).toString(36);",
-                  ),
-                  (
-                      "runOnUiThread { executeAction(action, args, reply) }",
-                      "runOnUiThread {\n            runCatching { executeAction(action, args, reply) }\n                .onFailure { reply.failure(it.message ?: \"Host action failed.\") }\n        }",
-                  ),
-              ],
-          }
-
-          for path, edits in replacements.items():
-              text = path.read_text()
-              original = text
-              for old, new in edits:
-                  if old in text:
-                      text = text.replace(old, new)
-              if text != original:
-                  path.write_text(text)
-                  print(f"repaired {path}")
-          PY
-
-          if ! git diff --quiet; then
-            git config user.name "PocketHost CI"
-            git config user.email "actions@users.noreply.github.com"
-            git add app/src/main/java/com/libreseed/pocketbuild/host/HostCore.kt \
-                    app/src/main/java/com/libreseed/pocketbuild/host/RuntimeActivity.kt
-            git commit -m "Fix embedded JavaScript source interpolation"
-            git push origin "HEAD:${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
-          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -144,9 +94,11 @@ jobs:
         run: |
           set -euo pipefail
           APK=app/build/outputs/apk/debug/app-debug.apk
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           test -s "$APK"
+          test -x "$APKSIGNER"
           unzip -t "$APK"
-          apksigner verify --verbose --print-certs "$APK"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
 
       - name: Record APK checksum
         shell: bash
@@ -155,7 +107,7 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk ci-output/PocketHost-0.5.0-debug.apk
           sha256sum ci-output/PocketHost-0.5.0-debug.apk > ci-output/SHA256SUMS.txt
           {
-            echo "commit=$(git rev-parse HEAD)"
+            echo "commit=${GITHUB_SHA}"
             echo "run=${GITHUB_RUN_ID}"
             echo "host_runtime=webview-html-js-wasm"
             echo "host_core_api=1"
