@@ -68,6 +68,7 @@ fun PocketBuildApp(
     onSourceSelected: (Uri) -> Unit,
     onBuildRequested: () -> Unit,
     onFolderSelected: (Uri) -> Unit,
+    onToolchainAction: (String) -> Unit,
     onNoticeDismissed: () -> Unit,
 ) {
     var destination by remember { mutableStateOf(Destination.HOME) }
@@ -97,6 +98,7 @@ fun PocketBuildApp(
                     onOpenSource = { sourcePicker.launch(arrayOf("*/*")) },
                     onBuildRequested = onBuildRequested,
                     onGrantFolder = { folderPicker.launch(null) },
+                    onToolchainAction = onToolchainAction,
                     snackbarHostState = snackbarHostState,
                     hostSnackbarInline = true,
                 )
@@ -124,6 +126,7 @@ fun PocketBuildApp(
                     onOpenSource = { sourcePicker.launch(arrayOf("*/*")) },
                     onBuildRequested = onBuildRequested,
                     onGrantFolder = { folderPicker.launch(null) },
+                    onToolchainAction = onToolchainAction,
                     snackbarHostState = snackbarHostState,
                     hostSnackbarInline = false,
                 )
@@ -168,6 +171,7 @@ private fun AppContent(
     onOpenSource: () -> Unit,
     onBuildRequested: () -> Unit,
     onGrantFolder: () -> Unit,
+    onToolchainAction: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
     hostSnackbarInline: Boolean,
 ) {
@@ -176,7 +180,7 @@ private fun AppContent(
             Destination.HOME -> HomeScreen(state, onOpenSource, onBuildRequested, onGrantFolder)
             Destination.PROJECTS -> ProjectsScreen(state, onOpenSource, onBuildRequested, onGrantFolder)
             Destination.BUILDS -> BuildsScreen(state)
-            Destination.TOOLCHAINS -> ToolchainsScreen(state.toolchains)
+            Destination.TOOLCHAINS -> ToolchainsScreen(state.toolchains, onToolchainAction)
             Destination.SETTINGS -> SettingsScreen()
         }
         if (hostSnackbarInline && snackbarHostState.currentSnackbarData != null) {
@@ -335,19 +339,26 @@ private fun BuildsScreen(state: PocketBuildUiState) {
 }
 
 @Composable
-private fun ToolchainsScreen(toolchains: List<ToolchainPackSummary>) {
+private fun ToolchainsScreen(
+    toolchains: List<ToolchainPackSummary>,
+    onToolchainAction: (String) -> Unit,
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item { ScreenHeader("Toolchains", "Install only the build packs required by your projects") }
-        items(toolchains, key = { it.id }) { pack -> ToolchainCard(pack) }
+        items(toolchains, key = { it.id }) { pack -> ToolchainCard(pack, onToolchainAction) }
     }
 }
 
 @Composable
-private fun ToolchainCard(pack: ToolchainPackSummary) {
+private fun ToolchainCard(
+    pack: ToolchainPackSummary,
+    onToolchainAction: (String) -> Unit,
+) {
+    val working = pack.state == ToolchainState.VERIFYING
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -358,10 +369,32 @@ private fun ToolchainCard(pack: ToolchainPackSummary) {
                 StatusLabel(pack.state)
             }
             HorizontalDivider()
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(pack.sizeLabel)
-                TextButton(onClick = { }) {
-                    Text(if (pack.state == ToolchainState.READY) "Verify" else "Install")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = pack.sizeLabel,
+                    modifier = Modifier.weight(1f),
+                    color = if (pack.state == ToolchainState.MISSING && pack.sizeLabel.startsWith("Install failed")) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                TextButton(
+                    onClick = { onToolchainAction(pack.id) },
+                    enabled = !working,
+                ) {
+                    if (working) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Working")
+                    } else {
+                        Text(if (pack.state == ToolchainState.READY) "Verify" else "Install")
+                    }
                 }
             }
         }
@@ -385,9 +418,13 @@ private fun StatusLabel(state: ToolchainState) {
         ToolchainState.READY -> "Ready"
         ToolchainState.MISSING -> "Missing"
         ToolchainState.UPDATE_AVAILABLE -> "Update"
-        ToolchainState.VERIFYING -> "Checking"
+        ToolchainState.VERIFYING -> "Installing"
     }
-    Text(text, color = if (state == ToolchainState.READY) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+    val color = when (state) {
+        ToolchainState.READY, ToolchainState.VERIFYING -> MaterialTheme.colorScheme.primary
+        ToolchainState.MISSING, ToolchainState.UPDATE_AVAILABLE -> MaterialTheme.colorScheme.error
+    }
+    Text(text, color = color)
 }
 
 @Composable
