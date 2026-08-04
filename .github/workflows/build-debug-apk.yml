@@ -81,6 +81,14 @@ jobs:
             app/src/main/assets/templates/godot-4.7-arm64-template.apk
           test -s app/src/main/assets/templates/godot-4.7-arm64-template.apk
 
+      - name: Verify toolchain controls are connected
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -F 'TextButton(onClick = { })' app/src/main/java/com/libreseed/pocketbuild/ui/PocketBuildApp.kt
+          grep -F 'onToolchainAction = viewModel::installOrVerifyToolchain' app/src/main/java/com/libreseed/pocketbuild/MainActivity.kt
+          grep -F 'gradleBuilder.installToolchain' app/src/main/java/com/libreseed/pocketbuild/PocketBuildViewModel.kt
+
       - name: Build, test, and lint PocketHost
         shell: bash
         run: |
@@ -109,14 +117,14 @@ jobs:
           test -x "$APKSIGNER"
           unzip -t "$APK"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep "package: name='com.pocket'"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep "package: name='com.pocket' versionCode='7' versionName='0.6.1'"
 
       - name: Record APK checksum
         shell: bash
         run: |
           mkdir -p ci-output
-          cp app/build/outputs/apk/debug/app-debug.apk ci-output/PocketHost-0.6.0-debug.apk
-          sha256sum ci-output/PocketHost-0.6.0-debug.apk > ci-output/SHA256SUMS.txt
+          cp app/build/outputs/apk/debug/app-debug.apk ci-output/PocketHost-0.6.1-debug.apk
+          sha256sum ci-output/PocketHost-0.6.1-debug.apk > ci-output/SHA256SUMS.txt
           {
             echo "commit=${GITHUB_SHA}"
             echo "run=${GITHUB_RUN_ID}"
@@ -126,13 +134,14 @@ jobs:
             echo "android_build_tools=34.0.4-arm64"
             echo "android_platforms=downloaded-on-demand"
             echo "godot_runtime=4.7-stable-arm64"
+            echo "toolchain_install_ui=connected-with-live-status"
             echo "built_utc=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           } > ci-output/BUILD_INFO.txt
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: PocketHost-0.6.0-apk
+          name: PocketHost-0.6.1-apk
           path: ci-output/
           if-no-files-found: error
           retention-days: 14
