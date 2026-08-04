@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.libreseed.pocketbuild.model.IncomingSource
+import com.libreseed.pocketbuild.model.SourceContainer
 import com.libreseed.pocketbuild.model.SourceKind
 import java.io.BufferedInputStream
 import java.util.zip.ZipInputStream
@@ -27,6 +28,7 @@ class AndroidSourceInspector(private val context: Context) {
             mimeType = metadata.mimeType,
             sizeBytes = metadata.sizeBytes,
             kind = archiveResult?.kind ?: initialKind,
+            container = if (initialKind == SourceKind.ZIP_UNKNOWN) SourceContainer.ARCHIVE else SourceContainer.SINGLE_FILE,
             projectRootHint = archiveResult?.projectRootHint,
             warnings = archiveResult?.warnings.orEmpty(),
         )
