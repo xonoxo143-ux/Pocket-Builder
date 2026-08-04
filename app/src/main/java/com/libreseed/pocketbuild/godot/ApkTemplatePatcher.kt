@@ -103,7 +103,7 @@ class ApkTemplatePatcher {
             arguments.forEach { argument ->
                 val encoded = argument.toByteArray(Charsets.UTF_8)
                 addIntLe(encoded.size)
-                encoded.forEach(::add)
+                encoded.forEach { add(it) }
             }
         }.toByteArray()
     }
