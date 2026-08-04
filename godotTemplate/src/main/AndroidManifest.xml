@@ -23,7 +23,7 @@
             android:resizeableActivity="true"
             android:screenOrientation="unspecified"
             android:supportsPictureInPicture="true"
-            android:theme="@style/GodotAppSplashTheme"
+            android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen"
             android:windowSoftInputMode="adjustResize" />
 
         <activity-alias
