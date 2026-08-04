@@ -15,8 +15,8 @@ android {
         // PocketHost is a sideloaded development tool. Target 28 is intentional so Android
         // permits its user-approved, checksum-verified toolchain executables in app-private storage.
         targetSdk = 28
-        versionCode = 6
-        versionName = "0.6.0"
+        versionCode = 7
+        versionName = "0.6.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
