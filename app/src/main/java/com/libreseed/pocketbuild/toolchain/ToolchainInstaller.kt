@@ -10,8 +10,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 class ToolchainInstaller(
     private val root: File,
     private val sourcePolicy: TrustedSourcePolicy = TrustedSourcePolicy(),
-    private val downloadClient: DownloadClient = HttpsDownloadClient(),
+    downloadClient: DownloadClient? = null,
 ) {
+    private val downloadClient = downloadClient ?: HttpsDownloadClient(sourcePolicy)
+
     fun install(
         definition: ToolchainPackDefinition,
         cancelled: AtomicBoolean = AtomicBoolean(false),
@@ -24,7 +26,9 @@ class ToolchainInstaller(
         val store = ToolchainStore(root)
 
         try {
-            val totalKnownBytes = definition.artifacts.mapNotNull { it.compressedBytes }.sum()
+            val totalKnownBytes = definition.artifacts
+                .takeIf { artifacts -> artifacts.all { it.compressedBytes != null } }
+                ?.sumOf { it.compressedBytes!! }
             var completedKnownBytes = 0L
             definition.artifacts.forEachIndexed { index, artifact ->
                 check(!cancelled.get()) { "Toolchain installation cancelled." }
@@ -44,7 +48,7 @@ class ToolchainInstaller(
                         artifactIndex = index,
                         artifactCount = definition.artifacts.size,
                         completedBytes = completedKnownBytes,
-                        totalBytes = totalKnownBytes.takeIf { it > 0 },
+                        totalBytes = totalKnownBytes,
                         state = InstallState.DOWNLOADING,
                     ),
                 )
@@ -57,17 +61,20 @@ class ToolchainInstaller(
                             artifactIndex = index,
                             artifactCount = definition.artifacts.size,
                             completedBytes = completedKnownBytes + artifactBytes,
-                            totalBytes = totalKnownBytes.takeIf { it > 0 },
+                            totalBytes = totalKnownBytes,
                             state = InstallState.DOWNLOADING,
                         ),
                     )
                 }
                 check(!cancelled.get()) { "Toolchain installation cancelled." }
+                artifact.compressedBytes?.let { expectedBytes ->
+                    check(partial.length() == expectedBytes) { "Unexpected size: ${artifact.relativePath}" }
+                }
                 check(sha256(partial) == artifact.sha256.lowercase()) {
                     "Checksum mismatch: ${artifact.relativePath}"
                 }
                 check(partial.renameTo(output)) { "Cannot finalize ${artifact.relativePath}" }
-                completedKnownBytes += artifact.compressedBytes ?: partial.length()
+                completedKnownBytes += artifact.compressedBytes ?: output.length()
             }
 
             store.writeMetadata(staging, definition)
@@ -78,7 +85,7 @@ class ToolchainInstaller(
                     artifactIndex = definition.artifacts.size,
                     artifactCount = definition.artifacts.size,
                     completedBytes = completedKnownBytes,
-                    totalBytes = totalKnownBytes.takeIf { it > 0 },
+                    totalBytes = totalKnownBytes,
                     state = InstallState.VERIFYING,
                 ),
             )
@@ -108,26 +115,37 @@ fun interface DownloadClient {
     fun download(uri: URI, destination: File, cancelled: AtomicBoolean, onBytes: (Long) -> Unit)
 }
 
-class HttpsDownloadClient : DownloadClient {
+class HttpsDownloadClient(
+    private val sourcePolicy: TrustedSourcePolicy = TrustedSourcePolicy(),
+    private val maxRedirects: Int = 5,
+) : DownloadClient {
     override fun download(uri: URI, destination: File, cancelled: AtomicBoolean, onBytes: (Long) -> Unit) {
-        require(uri.scheme.equals("https", ignoreCase = true))
-        val connection = uri.toURL().openConnection() as HttpURLConnection
-        connection.instanceFollowRedirects = false
-        connection.connectTimeout = 30_000
-        connection.readTimeout = 30_000
-        connection.setRequestProperty("User-Agent", "PocketBuild/0.1")
+        var current = sourcePolicy.validate(uri.toString())
+        repeat(maxRedirects + 1) { redirectCount ->
+            check(!cancelled.get()) { "Toolchain installation cancelled." }
+            val connection = current.toURL().openConnection() as HttpURLConnection
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 30_000
+            connection.readTimeout = 30_000
+            connection.setRequestProperty("User-Agent", "PocketBuild/0.1")
 
-        try {
-            connection.connect()
-            val code = connection.responseCode
-            if (code in 300..399) {
-                error("Unexpected redirect while downloading toolchain data.")
+            try {
+                connection.connect()
+                val code = connection.responseCode
+                if (code in 300..399) {
+                    check(redirectCount < maxRedirects) { "Too many toolchain download redirects." }
+                    val location = connection.getHeaderField("Location") ?: error("Redirect has no Location header.")
+                    current = sourcePolicy.validate(current.resolve(location).toString())
+                    return@repeat
+                }
+                check(code in 200..299) { "Download failed with HTTP $code" }
+                connection.inputStream.use { input -> copyBounded(input, destination, cancelled, onBytes) }
+                return
+            } finally {
+                connection.disconnect()
             }
-            check(code in 200..299) { "Download failed with HTTP $code" }
-            connection.inputStream.use { input -> copyBounded(input, destination, cancelled, onBytes) }
-        } finally {
-            connection.disconnect()
         }
+        error("Toolchain download did not complete.")
     }
 
     private fun copyBounded(
