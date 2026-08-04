@@ -8,24 +8,40 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.libreseed.pocketbuild"
+        // This fixed, deliberately short id lets the ARM64 Android JDK be relocated from
+        // /data/data/com.termux/files/usr to /data/data/com.pocket/files/usr byte-for-byte.
+        applicationId = "com.pocket"
         minSdk = 26
-        targetSdk = 36
-        versionCode = 5
-        versionName = "0.5.0"
+        // PocketHost is a sideloaded development tool. Target 28 is intentional so Android
+        // permits its user-approved, checksum-verified toolchain executables in app-private storage.
+        targetSdk = 28
+        versionCode = 6
+        versionName = "0.6.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
 
+    val developmentKey = rootProject.file("ci/pockethost-dev.jks")
+    signingConfigs {
+        if (developmentKey.isFile) {
+            create("development") {
+                storeFile = developmentKey
+                storePassword = "pockethost"
+                keyAlias = "pockethost"
+                keyPassword = "pockethost"
+            }
+        }
+    }
+
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
+            signingConfigs.findByName("development")?.let { signingConfig = it }
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfigs.findByName("development")?.let { signingConfig = it }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -55,6 +71,11 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
+
+    lint {
+        // The lower target is a functional requirement for this private, sideloaded build host.
+        disable += setOf("ExpiredTargetSdkVersion", "OldTargetApi")
+    }
 }
 
 dependencies {
@@ -74,6 +95,8 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.1.0")
     implementation("androidx.webkit:webkit:1.16.0")
     implementation("com.android.tools.build:apksig:9.1.1")
+    implementation("org.apache.commons:commons-compress:1.28.0")
+    implementation("org.tukaani:xz:1.12")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
