@@ -272,7 +272,7 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
         updateOperation(
             operationId = operation.id,
             stage = operation.stageTitle,
-            detail = "Cancellation requested. Waiting for the active process to stop safely…",
+            detail = "Cancellation requested. Waiting for the Gradle launcher to stop…",
             fraction = operation.overallProgress,
             currentItem = operation.currentItem,
             cancellable = false,

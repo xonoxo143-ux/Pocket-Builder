@@ -640,7 +640,7 @@ private fun OperationDiagnosticsPanel(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (operation.status == OperationStatus.RUNNING) {
                     OutlinedButton(onClick = onCancel, enabled = operation.cancellable) {
-                        Text(if (operation.cancellable) "Cancel safely" else "Cannot cancel this stage")
+                        Text(if (operation.cancellable) "Cancel build" else "Cannot cancel this stage")
                     }
                 } else {
                     OutlinedButton(onClick = onClear) { Text("Clear console") }
