@@ -1,0 +1,45 @@
+name: Fix toolchain fast path
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.head_ref == 'feature/landscape-observability-v1' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/landscape-observability-v1
+          persist-credentials: true
+
+      - name: Apply exact nullable-return repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('app/src/main/java/com/libreseed/pocketbuild/gradle/MobileGradleToolchain.kt')
+          text = path.read_text()
+          old = '            return existingEnvironment\n'
+          new = '            return checkNotNull(existingEnvironment)\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one nullable fast-path return, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git diff --check
+
+      - name: Commit repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "PocketHost Audit"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/java/com/libreseed/pocketbuild/gradle/MobileGradleToolchain.kt
+          git commit -m "Fix ready-toolchain fast-path return"
+          git push origin HEAD:feature/landscape-observability-v1
