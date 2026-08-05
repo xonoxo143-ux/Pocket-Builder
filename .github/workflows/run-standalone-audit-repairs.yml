@@ -28,6 +28,42 @@ jobs:
 
           path = Path('.github/scripts/audit_repairs.py')
           text = path.read_text()
+
+          lines = text.splitlines(keepends=True)
+          filtered = []
+          index = 0
+          skipped = []
+          while index < len(lines):
+              if lines[index] == 'replace_once(\n':
+                  end_index = index + 1
+                  while end_index < len(lines) and lines[end_index] != ')\n':
+                      end_index += 1
+                  if end_index >= len(lines):
+                      raise SystemExit('Unterminated replace_once block in repair script')
+                  block = ''.join(lines[index:end_index + 1])
+                  already_applied = (
+                      'host/HostActivity.kt' in block
+                      and (
+                          'import com.libreseed.pocketbuild.ui.theme.PocketBuildTheme' in block
+                          or (
+                              'override fun onCreate(savedInstanceState: Bundle?)' in block
+                              and 'applyPhoneLandscapePreference()' in block
+                          )
+                      )
+                  )
+                  if already_applied:
+                      skipped.append(block)
+                  else:
+                      filtered.extend(lines[index:end_index + 1])
+                  index = end_index + 1
+                  continue
+              filtered.append(lines[index])
+              index += 1
+
+          if len(skipped) != 2:
+              raise SystemExit(f'Expected two already-applied HostActivity blocks, found {len(skipped)}')
+          text = ''.join(filtered)
+
           start = '    """    companion object {\n        const val EXTRA_APP_ID = "hosted_app_id"\n'
           start_replacement = "    '''    companion object {\n        const val EXTRA_APP_ID = \"hosted_app_id\"\n"
           end = '        private val BOOTSTRAP_SCRIPT = """\n""",\n)\n\nreplace_once(\n    "app/src/main/java/com/libreseed/pocketbuild/gradle/MobileGradleToolchain.kt",'
