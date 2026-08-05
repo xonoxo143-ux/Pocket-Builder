@@ -26,6 +26,7 @@ import com.libreseed.pocketbuild.model.SourceKind
 import com.libreseed.pocketbuild.model.ToolchainPackSummary
 import com.libreseed.pocketbuild.model.ToolchainState
 import com.libreseed.pocketbuild.model.WorkspaceSummary
+import com.libreseed.pocketbuild.runtime.OperationJournal
 import com.libreseed.pocketbuild.source.AndroidSourceInspector
 import com.libreseed.pocketbuild.workspace.WorkspaceManager
 import java.io.File
@@ -43,7 +44,13 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
     private val workspaceManager = WorkspaceManager(application)
     private val godotBuilder = GodotProjectBuilder(application)
     private val gradleBuilder = AndroidGradleProjectBuilder(application)
-    private val _uiState = MutableStateFlow(PocketBuildUiState())
+    private val operationJournal = OperationJournal(application)
+    private val _uiState = MutableStateFlow(
+        PocketBuildUiState(
+            operationHistory = runCatching { operationJournal.loadHistory(MAX_OPERATION_HISTORY) }
+                .getOrDefault(emptyList()),
+        ),
+    )
     val uiState: StateFlow<PocketBuildUiState> = _uiState.asStateFlow()
 
     private var pendingBuild: PendingBuild? = null
@@ -564,6 +571,7 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
     ): String? {
         if (operationActive()) return null
         val now = System.currentTimeMillis()
+        val initialLog = OperationLogLine(now, OperationSeverity.INFO, firstStage, detail)
         val stageModels = stages.distinct().map { stage ->
             OperationStageSummary(
                 id = stageId(stage),
@@ -580,9 +588,10 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
             detail = detail,
             cancellable = cancellable,
             stages = stageModels,
-            logs = listOf(OperationLogLine(now, OperationSeverity.INFO, firstStage, detail)),
+            logs = listOf(initialLog),
         )
         _uiState.update { it.copy(activeOperation = operation) }
+        appendJournal(operation.id, initialLog)
         return operation.id
     }
 
@@ -597,6 +606,7 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
         severity: OperationSeverity = OperationSeverity.INFO,
     ) {
         val now = System.currentTimeMillis()
+        var journalLine: OperationLogLine? = null
         _uiState.update { state ->
             val current = state.activeOperation
             if (current == null || current.id != operationId || current.status != OperationStatus.RUNNING) return@update state
@@ -631,9 +641,11 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
             }
             val message = logLine ?: detail
             val newLog = OperationLogLine(now, severity, stage, message)
-            val logs = if (current.logs.lastOrNull()?.message == newLog.message && current.logs.lastOrNull()?.stage == stage) {
+            val duplicate = current.logs.lastOrNull()?.message == newLog.message && current.logs.lastOrNull()?.stage == stage
+            val logs = if (duplicate) {
                 current.logs
             } else {
+                journalLine = newLog
                 (current.logs + newLog).takeLast(MAX_OPERATION_LOG_LINES)
             }
             state.copy(
@@ -648,6 +660,7 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
                 ),
             )
         }
+        journalLine?.let { appendJournal(operationId, it) }
     }
 
     private fun finishOperationSuccess(
@@ -679,7 +692,7 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
                 summary = fallback,
                 detail = message,
                 exceptionType = error::class.java.name,
-                logPath = logPath,
+                logPath = logPath ?: operationJournal.logFile(operationId).absolutePath,
                 existingDataSafe = true,
                 retryRecommended = true,
             ),
@@ -695,6 +708,13 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
         error: OperationErrorReport? = null,
     ) {
         val now = System.currentTimeMillis()
+        val severity = when (status) {
+            OperationStatus.FAILED -> OperationSeverity.ERROR
+            OperationStatus.CANCELLED -> OperationSeverity.WARNING
+            OperationStatus.RUNNING, OperationStatus.SUCCEEDED -> OperationSeverity.INFO
+        }
+        val terminalLog = OperationLogLine(now, severity, stage, detail)
+        var historyToPersist: List<OperationHistoryItem>? = null
         _uiState.update { state ->
             val current = state.activeOperation
             if (current == null || current.id != operationId) return@update state
@@ -711,7 +731,6 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
                     it
                 }
             }
-            val severity = if (status == OperationStatus.FAILED) OperationSeverity.ERROR else if (status == OperationStatus.CANCELLED) OperationSeverity.WARNING else OperationSeverity.INFO
             val finished = current.copy(
                 status = status,
                 finishedAtMillis = now,
@@ -720,7 +739,7 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
                 detail = detail,
                 cancellable = false,
                 stages = stages,
-                logs = (current.logs + OperationLogLine(now, severity, stage, detail)).takeLast(MAX_OPERATION_LOG_LINES),
+                logs = (current.logs + terminalLog).takeLast(MAX_OPERATION_LOG_LINES),
                 error = error,
                 outputPath = outputPath,
             )
@@ -736,11 +755,24 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
                 outputPath = outputPath,
                 errorSummary = error?.summary,
             )
+            val nextHistory = (listOf(history) + state.operationHistory.filterNot { it.id == history.id })
+                .take(MAX_OPERATION_HISTORY)
+            historyToPersist = nextHistory
             state.copy(
                 activeOperation = finished,
-                operationHistory = (listOf(history) + state.operationHistory.filterNot { it.id == history.id }).take(MAX_OPERATION_HISTORY),
+                operationHistory = nextHistory,
             )
         }
+        appendJournal(operationId, terminalLog)
+        historyToPersist?.let(::saveHistory)
+    }
+
+    private fun appendJournal(operationId: String, line: OperationLogLine) {
+        runCatching { operationJournal.append(operationId, line) }
+    }
+
+    private fun saveHistory(history: List<OperationHistoryItem>) {
+        runCatching { operationJournal.saveHistory(history) }
     }
 
     private fun refreshGradleToolchainState() {
