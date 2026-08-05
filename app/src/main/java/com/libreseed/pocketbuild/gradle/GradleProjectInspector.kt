@@ -18,13 +18,16 @@ class GradleProjectInspector {
         require(wrapperProperties.isFile) { "Gradle wrapper properties are missing." }
 
         val properties = Properties().apply { wrapperProperties.inputStream().use(::load) }
-        val distributionUrl = properties.getProperty("distributionUrl")?.replace("\\:", ":")
+        val distributionUrl = properties.getProperty("distributionUrl")
             ?: error("Gradle wrapper distributionUrl is missing.")
         val distribution = URI(distributionUrl)
         require(distribution.scheme.equals("https", true)) { "Gradle distributions must use HTTPS." }
         require(distribution.host?.lowercase() in GRADLE_HOSTS) {
             "Untrusted Gradle distribution host: ${distribution.host}"
         }
+        val distributionSha256 = properties.getProperty("distributionSha256Sum")
+            ?.trim()
+            ?.takeIf { it.matches(Regex("[0-9a-fA-F]{64}")) }
 
         val scripts = root.walkTopDown()
             .maxDepth(5)
@@ -52,15 +55,28 @@ class GradleProjectInspector {
         }
         if (platforms.isEmpty()) platforms += DEFAULT_PLATFORM
 
+        val warnings = buildList {
+            add("Gradle wrapper JARs and build scripts execute project-supplied JVM code inside PocketBuild's app sandbox.")
+            if (distributionSha256 == null) {
+                add("The Gradle wrapper does not declare distributionSha256Sum, so Gradle cannot pin the distribution archive by checksum.")
+            }
+            if (platforms.any { it != DEFAULT_PLATFORM }) {
+                add("This project requests Android SDK ${platforms.sorted().joinToString()}; missing platforms will be downloaded before the build.")
+            }
+        }
+
         return GradleProjectRequirements(
             root = root,
             wrapperJar = wrapperJar,
             wrapperProperties = wrapperProperties,
             distributionUrl = distributionUrl,
+            distributionHost = distribution.host.orEmpty(),
+            distributionSha256Sum = distributionSha256,
             gradleVersion = Regex("gradle-([0-9][0-9A-Za-z._-]*)-(?:all|bin)\\.zip")
                 .find(distributionUrl)?.groupValues?.getOrNull(1),
             compileSdks = platforms,
             task = "assembleDebug",
+            warnings = warnings,
         )
     }
 
@@ -81,7 +97,10 @@ data class GradleProjectRequirements(
     val wrapperJar: File,
     val wrapperProperties: File,
     val distributionUrl: String,
+    val distributionHost: String,
+    val distributionSha256Sum: String?,
     val gradleVersion: String?,
     val compileSdks: Set<Int>,
     val task: String,
+    val warnings: List<String>,
 )
