@@ -35,6 +35,52 @@ jobs:
             echo 'Diagnostic export is already wired.'
             exit 0
           fi
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/scripts/wire_diagnostic_export.py')
+          text = path.read_text()
+          old = '''ui_path = Path("app/src/main/java/com/libreseed/pocketbuild/ui/PocketBuildApp.kt")
+          ui_text = ui_path.read_text()
+          old_callbacks = ''' + "'''" + '''                            onCancelOperation = onCancelOperation,
+                                      onClearOperation = onClearOperation,
+          ''' + "'''" + '''
+          new_callbacks = ''' + "'''" + '''                            onCancelOperation = onCancelOperation,
+                                      onClearOperation = onClearOperation,
+                                      onExportOperation = onExportOperation,
+          ''' + "'''" + '''
+          callback_count = ui_text.count(old_callbacks)
+          if callback_count != 2:
+              raise SystemExit(f"PocketBuildApp.kt: expected two AppContent callback blocks, found {callback_count}")
+          ui_path.write_text(ui_text.replace(old_callbacks, new_callbacks))
+          '''
+          new = '''replace_once(
+              "app/src/main/java/com/libreseed/pocketbuild/ui/PocketBuildApp.kt",
+              ''' + "'''" + '''                            onCancelOperation = onCancelOperation,
+                                      onClearOperation = onClearOperation,
+          ''' + "'''" + ''',
+              ''' + "'''" + '''                            onCancelOperation = onCancelOperation,
+                                      onClearOperation = onClearOperation,
+                                      onExportOperation = onExportOperation,
+          ''' + "'''" + ''',
+          )
+
+          replace_once(
+              "app/src/main/java/com/libreseed/pocketbuild/ui/PocketBuildApp.kt",
+              ''' + "'''" + '''                        onCancelOperation = onCancelOperation,
+                                  onClearOperation = onClearOperation,
+          ''' + "'''" + ''',
+              ''' + "'''" + '''                        onCancelOperation = onCancelOperation,
+                                  onClearOperation = onClearOperation,
+                                  onExportOperation = onExportOperation,
+          ''' + "'''" + ''',
+          )
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one combined callback block, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          python -m py_compile .github/scripts/wire_diagnostic_export.py
           python .github/scripts/wire_diagnostic_export.py
           git diff --check
           git config user.name "PocketHost Audit"
