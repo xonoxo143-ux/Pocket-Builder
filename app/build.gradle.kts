@@ -36,12 +36,14 @@ android {
 
     buildTypes {
         debug {
+            // Stable public development signing keeps sideloaded debug updates install-compatible.
             signingConfigs.findByName("development")?.let { signingConfig = it }
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfigs.findByName("development")?.let { signingConfig = it }
+            // Never sign a release with the committed development key. A private release signing
+            // configuration must be supplied explicitly before distributing a release build.
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
