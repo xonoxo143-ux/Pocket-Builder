@@ -23,12 +23,13 @@ jobs:
           set -euo pipefail
           python - <<'PYRUNNER'
           from pathlib import Path
+          from textwrap import dedent
 
           workflow = Path('.github/workflows/apply-audit-repairs.yml').read_text()
           marker = "          python - <<'PY'\n"
           start = workflow.index(marker) + len(marker)
           end = workflow.index("\n          PY\n", start)
-          script = workflow[start:end]
+          script = dedent(workflow[start:end])
           script = script.replace("if expected != 4:", "if expected != 3:")
           script = script.replace("expected 4 old grant-key calls", "expected 3 old grant-key calls")
           exec(compile(script, 'audited-repairs.py', 'exec'), {})
