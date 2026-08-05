@@ -58,7 +58,7 @@ class MobileGradleToolchain(private val context: Context) {
         }
         if (baseInstalled && missingPlatforms.isEmpty()) {
             onProgress(Progress("Toolchain ready", "JDK 17, Android SDK and ARM64 build tools are ready.", 1f))
-            return existingEnvironment
+            return checkNotNull(existingEnvironment)
         }
         val requiredFreeBytes = if (baseInstalled) MIN_PLATFORM_FREE_BYTES else MIN_FREE_BYTES
         check(StatFs(files.absolutePath).availableBytes >= requiredFreeBytes) {
