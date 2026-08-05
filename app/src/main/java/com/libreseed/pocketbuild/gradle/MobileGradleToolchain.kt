@@ -50,18 +50,27 @@ class MobileGradleToolchain(private val context: Context) {
         check(context.packageName == EXPECTED_APPLICATION_ID) {
             "This build must use application id $EXPECTED_APPLICATION_ID so its relocatable JDK prefix is valid."
         }
-        check(StatFs(files.absolutePath).availableBytes >= MIN_FREE_BYTES) {
-            "At least 1.2 GB of free app storage is required for the local Android toolchain."
+        val platforms = requiredPlatforms.filter { it in MIN_PLATFORM..MAX_PLATFORM }.ifEmpty { setOf(DEFAULT_PLATFORM) }
+        val baseInstalled = baseReady()
+        val existingEnvironment = if (baseInstalled) environment(validate = true) else null
+        val missingPlatforms = platforms.filter { api ->
+            existingEnvironment == null || !File(existingEnvironment.sdk, "platforms/android-$api/android.jar").isFile
+        }
+        if (baseInstalled && missingPlatforms.isEmpty()) {
+            onProgress(Progress("Toolchain ready", "JDK 17, Android SDK and ARM64 build tools are ready.", 1f))
+            return checkNotNull(existingEnvironment)
+        }
+        val requiredFreeBytes = if (baseInstalled) MIN_PLATFORM_FREE_BYTES else MIN_FREE_BYTES
+        check(StatFs(files.absolutePath).availableBytes >= requiredFreeBytes) {
+            if (baseInstalled) "At least 512 MB of free app storage is required to add the missing Android SDK platform."
+            else "At least 1.2 GB of free app storage is required for the local Android toolchain."
         }
 
-        if (!baseReady()) installBase(onProgress)
+        if (!baseInstalled) installBase(onProgress)
         val env = environment(validate = true)
-        val platforms = requiredPlatforms.filter { it in MIN_PLATFORM..MAX_PLATFORM }.ifEmpty { setOf(DEFAULT_PLATFORM) }
-        platforms.sorted().forEachIndexed { index, api ->
-            if (!File(env.sdk, "platforms/android-$api/android.jar").isFile) {
-                val base = 0.84f + (index.toFloat() / max(1, platforms.size)) * 0.13f
-                installPlatform(api, env.sdk, base, onProgress)
-            }
+        missingPlatforms.sorted().forEachIndexed { index, api ->
+            val base = 0.84f + (index.toFloat() / max(1, missingPlatforms.size)) * 0.13f
+            installPlatform(api, env.sdk, base, onProgress)
         }
         writeMarker()
         onProgress(Progress("Toolchain ready", "JDK 17, Android SDK and ARM64 build tools are ready.", 1f))
@@ -604,6 +613,13 @@ class MobileGradleToolchain(private val context: Context) {
         onBytes: (Long) -> Unit = {},
     ) {
         destination.parentFile?.mkdirs()
+        if (destination.isFile && destination.length() in 1..maxBytes && expectedDigest != null) {
+            if (digest(destination, algorithm).equals(expectedDigest, ignoreCase = true)) {
+                onBytes(destination.length())
+                return
+            }
+            destination.delete()
+        }
         val partial = File(destination.absolutePath + ".part")
         partial.delete()
         var current = URI(url)
@@ -680,9 +696,15 @@ class MobileGradleToolchain(private val context: Context) {
 
     private fun writeMarker() {
         val temporary = File(files, "$MARKER.tmp")
+        val backup = File(files, "$MARKER.backup")
         temporary.writeText(TOOLCHAIN_VERSION)
-        marker.delete()
-        check(temporary.renameTo(marker)) { "Cannot write toolchain marker." }
+        backup.delete()
+        if (marker.exists()) check(marker.renameTo(backup)) { "Cannot preserve the previous toolchain marker." }
+        if (!temporary.renameTo(marker)) {
+            if (backup.exists()) backup.renameTo(marker)
+            error("Cannot write toolchain marker.")
+        }
+        backup.delete()
     }
 
     private fun formatBytes(bytes: Long): String = when {
@@ -728,6 +750,7 @@ class MobileGradleToolchain(private val context: Context) {
         private const val MAX_PLATFORM = 36
         private const val MAX_EXTRACTED_FILE = 512L * 1024 * 1024
         private const val MIN_FREE_BYTES = 1_200L * 1024 * 1024
+        private const val MIN_PLATFORM_FREE_BYTES = 512L * 1024 * 1024
         private val TRUSTED_HOSTS = setOf(
             "packages-cf.termux.dev",
             "github.com",

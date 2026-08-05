@@ -27,7 +27,7 @@ class SafeArchiveExtractor(
 
                 val normalized = entry.name.replace('\\', '/').trimStart('/')
                 val relative = stripRoot(normalized, prefix)
-                if (relative.isNotBlank()) {
+                if (relative != null && relative.isNotBlank()) {
                     val output = File(canonicalRoot, relative).canonicalFile
                     check(output.path == canonicalRoot.path || output.path.startsWith(canonicalRoot.path + File.separator)) {
                         "Archive entry escapes the workspace: ${entry.name}"
@@ -62,11 +62,11 @@ class SafeArchiveExtractor(
         return ExtractionStats(entries = entries, files = files, expandedBytes = totalBytes)
     }
 
-    private fun stripRoot(path: String, rootHint: String?): String {
+    private fun stripRoot(path: String, rootHint: String?): String? {
         if (rootHint == null) return path
         if (path == rootHint) return ""
         val prefix = "$rootHint/"
-        return if (path.startsWith(prefix)) path.removePrefix(prefix) else path
+        return if (path.startsWith(prefix)) path.removePrefix(prefix) else null
     }
 }
 

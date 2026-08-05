@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.libreseed.pocketbuild.MainActivity
 import com.libreseed.pocketbuild.host.ui.HostScreen
+import com.libreseed.pocketbuild.ui.applyPhoneLandscapePreference
 import com.libreseed.pocketbuild.ui.theme.PocketBuildTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -22,6 +23,7 @@ import kotlinx.coroutines.withContext
 
 class HostActivity : ComponentActivity() {
     private lateinit var store: HostStore
+    private lateinit var firewall: CapabilityFirewall
     private var apps by mutableStateOf<List<HostedApp>>(emptyList())
     private var busy by mutableStateOf(false)
     private var status by mutableStateOf<String?>(null)
@@ -31,9 +33,11 @@ class HostActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        applyPhoneLandscapePreference()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         store = HostStore(this)
+        firewall = CapabilityFirewall(this)
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching { store.ensureBuiltInDemo() }
             withContext(Dispatchers.Main) {
@@ -113,6 +117,7 @@ class HostActivity : ComponentActivity() {
     private fun rollback(app: HostedApp) {
         if (busy) return
         busy = true
+        status = "Rolling back ${app.name}…"
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { store.rollback(app.id) } }
             result.onSuccess {
@@ -132,12 +137,15 @@ class HostActivity : ComponentActivity() {
             .setPositiveButton("Delete") { _, _ ->
                 lifecycleScope.launch {
                     busy = true
+                    status = "Deleting ${app.name}…"
                     val result = withContext(Dispatchers.IO) { runCatching { store.delete(app.id) } }
                     result.onSuccess {
+                        firewall.revokeApp(app.id)
                         refreshApps()
                         status = "Deleted ${app.name}."
                     }.onFailure {
-                        Toast.makeText(this@HostActivity, it.message ?: "Delete failed.", Toast.LENGTH_LONG).show()
+                        status = it.message ?: "Delete failed."
+                        Toast.makeText(this@HostActivity, status, Toast.LENGTH_LONG).show()
                     }
                     busy = false
                 }

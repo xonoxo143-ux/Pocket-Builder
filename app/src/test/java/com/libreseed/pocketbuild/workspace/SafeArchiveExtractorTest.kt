@@ -1,6 +1,7 @@
 package com.libreseed.pocketbuild.workspace
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
@@ -21,6 +22,22 @@ class SafeArchiveExtractorTest {
         assertEquals(2, stats.files)
         assertTrue(destination.resolve("project.godot").isFile)
         assertTrue(destination.resolve("scenes/main.tscn").isFile)
+    }
+
+    @Test
+    fun ignoresFilesOutsideDetectedProjectRoot() {
+        val archive = zipOf(
+            "game/project.godot" to "config_version=5",
+            "game/scenes/main.tscn" to "[gd_scene]",
+            "unrelated.txt" to "must not be imported",
+            "other-project/settings.gradle.kts" to "rootProject.name = \"Other\"",
+        )
+        val destination = Files.createTempDirectory("pb-extract-root").toFile()
+        val stats = SafeArchiveExtractor().extract(ByteArrayInputStream(archive), destination, "game")
+        assertEquals(2, stats.files)
+        assertTrue(destination.resolve("project.godot").isFile)
+        assertFalse(destination.resolve("unrelated.txt").exists())
+        assertFalse(destination.resolve("other-project").exists())
     }
 
     @Test(expected = IllegalStateException::class)

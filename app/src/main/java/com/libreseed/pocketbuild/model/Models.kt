@@ -40,6 +40,12 @@ data class ToolchainPackSummary(
     val subtitle: String,
     val sizeLabel: String,
     val state: ToolchainState,
+    val progress: Float? = null,
+    val installedBytes: Long? = null,
+    val cacheBytes: Long? = null,
+    val freeBytes: Long? = null,
+    val lastVerifiedAtMillis: Long? = null,
+    val components: List<ToolchainComponentSummary> = emptyList(),
 )
 
 data class BuildSummary(

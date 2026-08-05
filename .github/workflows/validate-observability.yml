@@ -1,0 +1,97 @@
+name: Validate landscape observability
+
+on:
+  push:
+    branches:
+      - feature/landscape-observability-v1
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: landscape-observability-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android platform and Build Tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "platform-tools"
+
+      - name: Set up pinned Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+          cache-read-only: false
+
+      - name: Prepare generated validation assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/assets/toolchain
+          cp -L "$JAVA_HOME/lib/security/cacerts" app/src/main/assets/toolchain/cacerts
+          test -s app/src/main/assets/toolchain/cacerts
+
+      - name: Compile Kotlin
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --stacktrace :app:compileDebugKotlin
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --stacktrace :app:testDebugUnitTest
+
+      - name: Run Android lint
+        shell: bash
+        run: |
+          set +e
+          gradle --stacktrace :app:lintDebug
+          STATUS=$?
+          REPORT="app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt"
+          if [ -f "$REPORT" ]; then
+            echo "===== COMPLETE ANDROID LINT REPORT ====="
+            cat "$REPORT"
+            echo "===== END ANDROID LINT REPORT ====="
+          fi
+          exit "$STATUS"
+
+      - name: Verify observability wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'OperationJournal' app/src/main/java/com/libreseed/pocketbuild/PocketBuildViewModel.kt
+          grep -F 'LandscapePreference' app/src/main/java/com/libreseed/pocketbuild/MainActivity.kt
+          grep -F 'LinearProgressIndicator' app/src/main/java/com/libreseed/pocketbuild/ui/PocketBuildApp.kt
+          grep -F 'cancelActiveOperation' app/src/main/java/com/libreseed/pocketbuild/PocketBuildViewModel.kt
+          grep -F 'exportActiveOperation' app/src/main/java/com/libreseed/pocketbuild/PocketBuildViewModel.kt
+          grep -F 'Share diagnostic report' app/src/main/java/com/libreseed/pocketbuild/ui/PocketBuildApp.kt
+          grep -F 'Waiting for the Gradle launcher to stop' app/src/main/java/com/libreseed/pocketbuild/PocketBuildViewModel.kt
+          ! grep -R -F 'onClick = { }' app/src/main/java
