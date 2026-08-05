@@ -37,6 +37,7 @@ class HostActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         store = HostStore(this)
+        firewall = CapabilityFirewall(this)
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching { store.ensureBuiltInDemo() }
             withContext(Dispatchers.Main) {
