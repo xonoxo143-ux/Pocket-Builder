@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.libreseed.pocketbuild.MainActivity
 import com.libreseed.pocketbuild.host.ui.HostScreen
+import com.libreseed.pocketbuild.ui.applyPhoneLandscapePreference
 import com.libreseed.pocketbuild.ui.theme.PocketBuildTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -31,6 +32,7 @@ class HostActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        applyPhoneLandscapePreference()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         store = HostStore(this)
@@ -113,6 +115,7 @@ class HostActivity : ComponentActivity() {
     private fun rollback(app: HostedApp) {
         if (busy) return
         busy = true
+        status = "Rolling back ${app.name}…"
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { store.rollback(app.id) } }
             result.onSuccess {
@@ -132,12 +135,14 @@ class HostActivity : ComponentActivity() {
             .setPositiveButton("Delete") { _, _ ->
                 lifecycleScope.launch {
                     busy = true
+                    status = "Deleting ${app.name}…"
                     val result = withContext(Dispatchers.IO) { runCatching { store.delete(app.id) } }
                     result.onSuccess {
                         refreshApps()
                         status = "Deleted ${app.name}."
                     }.onFailure {
-                        Toast.makeText(this@HostActivity, it.message ?: "Delete failed.", Toast.LENGTH_LONG).show()
+                        status = it.message ?: "Delete failed."
+                        Toast.makeText(this@HostActivity, status, Toast.LENGTH_LONG).show()
                     }
                     busy = false
                 }
