@@ -124,6 +124,7 @@ fun PocketBuildApp(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val landscape = maxWidth > maxHeight
         val wideLandscape = landscape && maxWidth >= 840.dp
+        val diagnosticsWidth = if (maxWidth >= 1180.dp) 400.dp else 340.dp
         if (wideLandscape) {
             Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
                 Row(Modifier.fillMaxSize().padding(padding)) {
@@ -155,7 +156,7 @@ fun PocketBuildApp(
                         operation = state.activeOperation,
                         modifier = Modifier
                             .fillMaxHeight()
-                            .width(if (maxWidth >= 1180.dp) 400.dp else 340.dp),
+                            .width(diagnosticsWidth),
                         onCancel = onCancelOperation,
                         onClear = onClearOperation,
                         showTimeline = true,
