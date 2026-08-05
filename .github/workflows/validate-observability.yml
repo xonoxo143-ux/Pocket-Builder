@@ -8,13 +8,41 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: landscape-observability-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  correct-cancellation-wording:
+    if: github.event_name == 'pull_request' && github.head_ref == 'feature/landscape-observability-v1' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/landscape-observability-v1
+          persist-credentials: true
+
+      - name: Apply exact wording correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -Fq 'Waiting for the Gradle launcher to stop' app/src/main/java/com/libreseed/pocketbuild/PocketBuildViewModel.kt; then
+            echo 'Cancellation wording is already corrected.'
+            exit 0
+          fi
+          python .github/scripts/correct_cancellation_wording.py
+          git diff --check
+          git config user.name "PocketHost Audit"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/java
+          git commit -m "Clarify Gradle cancellation limits"
+          git push origin HEAD:feature/landscape-observability-v1
+
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 35
