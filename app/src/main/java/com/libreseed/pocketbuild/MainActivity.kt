@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.libreseed.pocketbuild.ui.PocketBuildApp
+import com.libreseed.pocketbuild.ui.applyPhoneLandscapePreference
 import com.libreseed.pocketbuild.ui.theme.PocketBuildTheme
 import java.io.File
 
@@ -22,6 +23,7 @@ class MainActivity : ComponentActivity() {
     private var pendingInstallPath: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        applyPhoneLandscapePreference()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         viewModel.acceptIntent(intent)
@@ -40,6 +42,10 @@ class MainActivity : ComponentActivity() {
                     onBuildRequested = viewModel::queueBuild,
                     onFolderSelected = viewModel::importProjectTree,
                     onToolchainAction = viewModel::installOrVerifyToolchain,
+                    onBuildConfirmed = viewModel::confirmPendingBuild,
+                    onBuildConfirmationDismissed = viewModel::dismissBuildConfirmation,
+                    onCancelOperation = viewModel::cancelActiveOperation,
+                    onClearOperation = viewModel::clearOperationReport,
                     onNoticeDismissed = viewModel::clearNotice,
                 )
             }
