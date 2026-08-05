@@ -5,11 +5,15 @@ import com.libreseed.pocketbuild.model.OperationHistoryItem
 import com.libreseed.pocketbuild.model.OperationKind
 import com.libreseed.pocketbuild.model.OperationLogLine
 import com.libreseed.pocketbuild.model.OperationStatus
+import com.libreseed.pocketbuild.model.OperationUiState
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
 
-class OperationJournal(context: Context) {
+class OperationJournal(private val context: Context) {
     private val root = File(context.filesDir, "operation-journal").apply { mkdirs() }
     private val logs = File(root, "logs").apply { mkdirs() }
     private val historyFile = File(root, "history.json")
@@ -36,6 +40,74 @@ class OperationJournal(context: Context) {
     }
 
     fun logFile(operationId: String): File = File(logs, safeId(operationId) + ".log")
+
+    @Synchronized
+    fun exportDiagnostic(operation: OperationUiState): File {
+        val shared = File(context.cacheDir, "shared").apply { mkdirs() }
+        val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+        val destination = File(shared, "pocketbuild-${safeId(operation.title)}-$timestamp.txt")
+        val previousLog = File(logs, safeId(operation.id) + ".previous.log")
+        val currentLog = logFile(operation.id)
+        destination.bufferedWriter().use { writer ->
+            writer.appendLine("PocketBuild diagnostic report")
+            writer.appendLine("Generated: ${formatTimestamp(System.currentTimeMillis())}")
+            writer.appendLine()
+            writer.appendLine("Operation ID: ${operation.id}")
+            writer.appendLine("Kind: ${operation.kind}")
+            writer.appendLine("Title: ${operation.title}")
+            writer.appendLine("Status: ${operation.status}")
+            writer.appendLine("Started: ${formatTimestamp(operation.startedAtMillis)}")
+            writer.appendLine("Finished: ${operation.finishedAtMillis?.let(::formatTimestamp) ?: "Still running"}")
+            writer.appendLine("Current stage: ${operation.stageTitle}")
+            writer.appendLine("Detail: ${singleLine(operation.detail)}")
+            operation.currentItem?.let { writer.appendLine("Current item: ${singleLine(it)}") }
+            operation.overallProgress?.let { writer.appendLine("Overall progress: ${(it * 100).toInt().coerceIn(0, 100)}%") }
+            operation.completedBytes?.let { writer.appendLine("Transferred bytes: $it") }
+            operation.totalBytes?.let { writer.appendLine("Total bytes: $it") }
+            operation.bytesPerSecond?.let { writer.appendLine("Bytes per second: $it") }
+            operation.outputPath?.let { writer.appendLine("Output: $it") }
+            operation.error?.let { error ->
+                writer.appendLine()
+                writer.appendLine("ERROR")
+                writer.appendLine("Summary: ${singleLine(error.summary)}")
+                writer.appendLine("Detail: ${singleLine(error.detail)}")
+                error.exceptionType?.let { writer.appendLine("Exception: $it") }
+                error.logPath?.let { writer.appendLine("Related log: $it") }
+                writer.appendLine("Existing data safe: ${error.existingDataSafe}")
+                writer.appendLine("Retry recommended: ${error.retryRecommended}")
+            }
+            writer.appendLine()
+            writer.appendLine("STAGE TIMELINE")
+            operation.stages.forEach { stage ->
+                writer.appendLine(
+                    buildString {
+                        append(stage.status)
+                        append('\t')
+                        append(stage.title)
+                        stage.startedAtMillis?.let { append("\tstart=").append(formatTimestamp(it)) }
+                        stage.finishedAtMillis?.let { append("\tfinish=").append(formatTimestamp(it)) }
+                        if (stage.detail.isNotBlank()) append("\t").append(singleLine(stage.detail))
+                    },
+                )
+            }
+            writer.appendLine()
+            writer.appendLine("IN-MEMORY LOG SNAPSHOT")
+            operation.logs.forEach { line ->
+                writer.appendLine(
+                    "${formatTimestamp(line.timestampMillis)}\t${line.severity}\t${singleLine(line.stage)}\t${singleLine(line.message)}",
+                )
+            }
+            listOf(previousLog, currentLog).filter(File::isFile).forEach { source ->
+                writer.appendLine()
+                writer.appendLine("PERSISTED LOG: ${source.name}")
+                source.bufferedReader().useLines { lines ->
+                    lines.forEach(writer::appendLine)
+                }
+            }
+        }
+        check(destination.isFile && destination.length() > 0) { "Diagnostic report was not created." }
+        return destination
+    }
 
     @Synchronized
     fun loadHistory(limit: Int = 30): List<OperationHistoryItem> {
@@ -100,6 +172,9 @@ class OperationJournal(context: Context) {
     private fun safeId(value: String): String = value.replace(Regex("[^A-Za-z0-9._-]"), "_").take(96)
 
     private fun singleLine(value: String): String = value.replace('\r', ' ').replace('\n', ' ')
+
+    private fun formatTimestamp(value: Long): String =
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS Z", Locale.US).format(Date(value))
 
     companion object {
         private const val MAX_LOG_BYTES = 5L * 1024 * 1024
