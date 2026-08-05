@@ -95,6 +95,7 @@ fun PocketBuildApp(
     onBuildConfirmationDismissed: () -> Unit,
     onCancelOperation: () -> Unit,
     onClearOperation: () -> Unit,
+    onExportOperation: () -> Unit,
     onNoticeDismissed: () -> Unit,
 ) {
     var destination by remember { mutableStateOf(Destination.HOME) }
@@ -144,6 +145,7 @@ fun PocketBuildApp(
                             onToolchainAction = onToolchainAction,
                             onCancelOperation = onCancelOperation,
                             onClearOperation = onClearOperation,
+                            onExportOperation = onExportOperation,
                         )
                     }
                     Box(
@@ -159,6 +161,7 @@ fun PocketBuildApp(
                             .width(diagnosticsWidth),
                         onCancel = onCancelOperation,
                         onClear = onClearOperation,
+                        onExport = onExportOperation,
                         showTimeline = true,
                     )
                 }
@@ -194,6 +197,7 @@ fun PocketBuildApp(
                         onToolchainAction = onToolchainAction,
                         onCancelOperation = onCancelOperation,
                         onClearOperation = onClearOperation,
+                        onExportOperation = onExportOperation,
                     )
                 }
             }
@@ -293,12 +297,13 @@ private fun AppContent(
     onToolchainAction: (String) -> Unit,
     onCancelOperation: () -> Unit,
     onClearOperation: () -> Unit,
+    onExportOperation: () -> Unit,
 ) {
     Box(modifier.fillMaxSize()) {
         when (destination) {
             Destination.HOME -> HomeScreen(state, onOpenSource, onBuildRequested, onGrantFolder)
             Destination.PROJECTS -> ProjectsScreen(state, onOpenSource, onBuildRequested, onGrantFolder)
-            Destination.BUILDS -> BuildsScreen(state, compact, onCancelOperation, onClearOperation)
+            Destination.BUILDS -> BuildsScreen(state, compact, onCancelOperation, onClearOperation, onExportOperation)
             Destination.TOOLCHAINS -> ToolchainsScreen(state.toolchains, onToolchainAction)
             Destination.SETTINGS -> SettingsScreen()
         }
@@ -466,6 +471,7 @@ private fun BuildsScreen(
     compact: Boolean,
     onCancelOperation: () -> Unit,
     onClearOperation: () -> Unit,
+    onExportOperation: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -480,6 +486,7 @@ private fun BuildsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     onCancel = onCancelOperation,
                     onClear = onClearOperation,
+                    onExport = onExportOperation,
                     showTimeline = true,
                 )
             }
@@ -594,6 +601,7 @@ private fun OperationDiagnosticsPanel(
     modifier: Modifier,
     onCancel: () -> Unit,
     onClear: () -> Unit,
+    onExport: () -> Unit,
     showTimeline: Boolean,
 ) {
     Surface(modifier = modifier, color = MaterialTheme.colorScheme.surface) {
@@ -629,7 +637,7 @@ private fun OperationDiagnosticsPanel(
                     operation.bytesPerSecond?.let { Metric("Speed", "${formatBytes(it)}/s", Modifier.weight(1f)) }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (operation.status == OperationStatus.RUNNING) {
                     OutlinedButton(onClick = onCancel, enabled = operation.cancellable) {
                         Text(if (operation.cancellable) "Cancel safely" else "Cannot cancel this stage")
@@ -637,6 +645,7 @@ private fun OperationDiagnosticsPanel(
                 } else {
                     OutlinedButton(onClick = onClear) { Text("Clear console") }
                 }
+                OutlinedButton(onClick = onExport) { Text("Share diagnostic report") }
             }
             operation.error?.let { ErrorReportCard(it.summary, it.detail, it.exceptionType, it.logPath, it.existingDataSafe, it.retryRecommended) }
             if (showTimeline) StageTimeline(operation)

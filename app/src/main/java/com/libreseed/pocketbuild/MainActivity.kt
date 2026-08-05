@@ -1,5 +1,6 @@
 package com.libreseed.pocketbuild
 
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -35,6 +36,11 @@ class MainActivity : ComponentActivity() {
                 requestInstallApk(outputPath)
                 viewModel.consumeCompletedOutput()
             }
+            LaunchedEffect(state.completedDiagnosticPath) {
+                val reportPath = state.completedDiagnosticPath ?: return@LaunchedEffect
+                shareDiagnosticReport(reportPath)
+                viewModel.consumeCompletedDiagnostic()
+            }
             PocketBuildTheme {
                 PocketBuildApp(
                     state = state,
@@ -46,6 +52,7 @@ class MainActivity : ComponentActivity() {
                     onBuildConfirmationDismissed = viewModel::dismissBuildConfirmation,
                     onCancelOperation = viewModel::cancelActiveOperation,
                     onClearOperation = viewModel::clearOperationReport,
+                    onExportOperation = viewModel::exportActiveOperation,
                     onNoticeDismissed = viewModel::clearNotice,
                 )
             }
@@ -88,6 +95,25 @@ class MainActivity : ComponentActivity() {
         } else {
             launchPackageInstaller(apk)
         }
+    }
+
+    private fun shareDiagnosticReport(path: String) {
+        val report = File(path)
+        if (!report.isFile) {
+            viewModel.reportDiagnosticShareFailure(IllegalStateException("The diagnostic report no longer exists."))
+            return
+        }
+        runCatching {
+            val uri = FileProvider.getUriForFile(this, "$packageName.files", report)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "PocketBuild diagnostic report")
+                putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = ClipData.newRawUri("PocketBuild diagnostic report", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, "Share diagnostic report"))
+        }.onFailure(viewModel::reportDiagnosticShareFailure)
     }
 
     private fun launchPackageInstaller(apk: File) {

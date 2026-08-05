@@ -285,6 +285,37 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update { it.copy(activeOperation = null) }
     }
 
+    fun exportActiveOperation() {
+        val operation = _uiState.value.activeOperation
+        if (operation == null) {
+            _uiState.update { it.copy(notice = "No operation report is available to export.") }
+            return
+        }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { operationJournal.exportDiagnostic(operation) }
+            }
+            result.onSuccess { report ->
+                _uiState.update {
+                    it.copy(
+                        completedDiagnosticPath = report.absolutePath,
+                        notice = "Diagnostic report created.",
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(notice = error.message ?: "Diagnostic report could not be created.")
+                }
+            }
+        }
+    }
+
+    fun reportDiagnosticShareFailure(error: Throwable) {
+        _uiState.update {
+            it.copy(notice = error.message ?: "Android's share sheet could not be opened.")
+        }
+    }
+
     fun reportInstallerFailure(path: String?, error: Throwable) {
         val fileName = path?.let(::File)?.name ?: "APK"
         val message = error.message ?: "Android's package installer could not be opened."
@@ -839,6 +870,10 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update { it.copy(completedOutputPath = null) }
     }
 
+    fun consumeCompletedDiagnostic() {
+        _uiState.update { it.copy(completedDiagnosticPath = null) }
+    }
+
     fun clearNotice() {
         _uiState.update { it.copy(notice = null) }
     }
@@ -907,6 +942,7 @@ data class PocketBuildUiState(
     val activeOperation: OperationUiState? = null,
     val operationHistory: List<OperationHistoryItem> = emptyList(),
     val completedOutputPath: String? = null,
+    val completedDiagnosticPath: String? = null,
     val notice: String? = null,
     val toolchains: List<ToolchainPackSummary> = listOf(
         ToolchainPackSummary(
