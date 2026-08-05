@@ -19,6 +19,27 @@ jobs:
           ref: feature/landscape-observability-v1
           persist-credentials: true
 
+      - name: Validate repair script
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/scripts/audit_repairs.py')
+          text = path.read_text()
+          start = '    """    companion object {\n        const val EXTRA_APP_ID = "hosted_app_id"\n'
+          start_replacement = "    '''    companion object {\n        const val EXTRA_APP_ID = \"hosted_app_id\"\n"
+          end = '        private val BOOTSTRAP_SCRIPT = """\n""",\n)\n\nreplace_once(\n    "app/src/main/java/com/libreseed/pocketbuild/gradle/MobileGradleToolchain.kt",'
+          end_replacement = "        private val BOOTSTRAP_SCRIPT = \"\"\"\n''',\n)\n\nreplace_once(\n    \"app/src/main/java/com/libreseed/pocketbuild/gradle/MobileGradleToolchain.kt\","
+          if text.count(start) != 1:
+              raise SystemExit(f'Expected one raw-string start marker, found {text.count(start)}')
+          if text.count(end) != 1:
+              raise SystemExit(f'Expected one raw-string end marker, found {text.count(end)}')
+          path.write_text(text.replace(start, start_replacement, 1).replace(end, end_replacement, 1))
+          PY
+          python -m py_compile .github/scripts/audit_repairs.py
+
       - name: Apply audited repairs
         shell: bash
         run: |
