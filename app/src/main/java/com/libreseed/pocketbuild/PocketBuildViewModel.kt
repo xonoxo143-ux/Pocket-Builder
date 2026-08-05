@@ -285,6 +285,27 @@ class PocketBuildViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update { it.copy(activeOperation = null) }
     }
 
+    fun reportInstallerFailure(path: String?, error: Throwable) {
+        val fileName = path?.let(::File)?.name ?: "APK"
+        val message = error.message ?: "Android's package installer could not be opened."
+        val operationId = beginOperation(
+            kind = OperationKind.APK_INSTALL,
+            title = "Install $fileName",
+            firstStage = "Launching Android installer",
+            detail = "Handing the verified APK to Android's package installer.",
+            cancellable = false,
+            stages = listOf("Launching Android installer"),
+        )
+        if (operationId != null) {
+            finishOperationFailure(
+                operationId = operationId,
+                error = error,
+                fallback = "Android installer could not be opened.",
+            )
+        }
+        _uiState.update { it.copy(notice = message) }
+    }
+
     private fun prepareArchiveWorkspace(source: IncomingSource) {
         val operationId = beginOperation(
             kind = OperationKind.WORKSPACE_IMPORT,

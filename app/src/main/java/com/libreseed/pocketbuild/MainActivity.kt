@@ -68,27 +68,42 @@ class MainActivity : ComponentActivity() {
 
     private fun requestInstallApk(path: String) {
         val apk = File(path)
-        if (!apk.isFile) return
+        if (!apk.isFile) {
+            viewModel.reportInstallerFailure(path, IllegalStateException("The generated APK no longer exists."))
+            return
+        }
         pendingInstallPath = path
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
-            startActivity(
-                Intent(
-                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:$packageName"),
-                ),
-            )
+            runCatching {
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:$packageName"),
+                    ),
+                )
+            }.onFailure { error ->
+                pendingInstallPath = null
+                viewModel.reportInstallerFailure(path, error)
+            }
         } else {
             launchPackageInstaller(apk)
         }
     }
 
     private fun launchPackageInstaller(apk: File) {
-        val uri = FileProvider.getUriForFile(this, "$packageName.files", apk)
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val path = apk.absolutePath
+        runCatching {
+            val uri = FileProvider.getUriForFile(this, "$packageName.files", apk)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(intent)
+        }.onSuccess {
+            pendingInstallPath = null
+        }.onFailure { error ->
+            pendingInstallPath = null
+            viewModel.reportInstallerFailure(path, error)
         }
-        pendingInstallPath = null
-        startActivity(intent)
     }
 }

@@ -23,6 +23,7 @@ import kotlinx.coroutines.withContext
 
 class HostActivity : ComponentActivity() {
     private lateinit var store: HostStore
+    private lateinit var firewall: CapabilityFirewall
     private var apps by mutableStateOf<List<HostedApp>>(emptyList())
     private var busy by mutableStateOf(false)
     private var status by mutableStateOf<String?>(null)
@@ -138,6 +139,7 @@ class HostActivity : ComponentActivity() {
                     status = "Deleting ${app.name}…"
                     val result = withContext(Dispatchers.IO) { runCatching { store.delete(app.id) } }
                     result.onSuccess {
+                        firewall.revokeApp(app.id)
                         refreshApps()
                         status = "Deleted ${app.name}."
                     }.onFailure {

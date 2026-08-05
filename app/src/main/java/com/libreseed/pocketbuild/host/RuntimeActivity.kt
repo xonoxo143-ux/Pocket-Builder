@@ -85,7 +85,7 @@ class RuntimeActivity : ComponentActivity() {
         val result = names.associateWith { name ->
             permissionForName(name)?.let { permission ->
                 platformResults[permission] ?: (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED)
-            } ?: true
+            } ?: (name in LOGICAL_PERMISSION_NAMES)
         }
         callback?.invoke(result)
     }
@@ -505,19 +505,28 @@ class RuntimeActivity : ComponentActivity() {
         }
         val platformPermissions = names.mapNotNull(::permissionForName).distinct()
         if (platformPermissions.isEmpty()) {
-            callback(names.associateWith { true })
+            callback(names.associateWith { it in LOGICAL_PERMISSION_NAMES })
             return
         }
         val missing = platformPermissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
         if (missing.isEmpty()) {
-            callback(names.associateWith { true })
+            callback(names.associateWith(::isPermissionGrantedOrImplicit))
             return
         }
         pendingPermissionNames = names
         pendingPermissionResult = callback
         permissionLauncher.launch(missing.toTypedArray())
+    }
+
+    private fun isPermissionGrantedOrImplicit(name: String): Boolean {
+        val permission = permissionForName(name)
+        return when {
+            permission != null -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+            name in LOGICAL_PERMISSION_NAMES -> true
+            else -> false
+        }
     }
 
     private fun permissionForName(name: String): String? = when (name) {
@@ -791,6 +800,14 @@ class RuntimeActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_APP_ID = "hosted_app_id"
+
+        private val LOGICAL_PERMISSION_NAMES = setOf(
+            "camera", "microphone", "location", "location.fine", "location.coarse",
+            "contacts.read", "contacts.write", "calendar.read", "calendar.write",
+            "activity", "bodySensors", "notifications", "bluetooth.scan",
+            "bluetooth.connect", "bluetooth.advertise", "nearbyWifi",
+            "media.images", "media.video", "media.audio", "phone.call",
+        )
 
         private val BOOTSTRAP_SCRIPT = """
             (() => {

@@ -7,6 +7,7 @@ enum class OperationKind {
     TOOLCHAIN_INSTALL,
     GODOT_BUILD,
     GRADLE_BUILD,
+    APK_INSTALL,
 }
 
 enum class OperationStatus {

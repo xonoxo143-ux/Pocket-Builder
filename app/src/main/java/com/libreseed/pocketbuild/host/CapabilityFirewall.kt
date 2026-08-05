@@ -18,7 +18,7 @@ class CapabilityFirewall(context: Context) {
     fun isGranted(app: HostedApp, capability: String): Boolean {
         if (capability in AUTOMATIC_CAPABILITIES) return true
         if (capability !in app.capabilities) return false
-        val key = key(app.id, capability)
+        val key = key(app, capability)
         return key in sessionGrants || preferences.getBoolean(key, false)
     }
 
@@ -73,14 +73,14 @@ class CapabilityFirewall(context: Context) {
             .setMessage(message)
             .setNegativeButton("Deny") { _, _ -> resolve(false) }
             .setPositiveButton("Allow once") { _, _ ->
-                sessionGrants += key(app.id, capability)
+                sessionGrants += key(app, capability)
                 resolve(true)
             }
             .setOnCancelListener { resolve(false) }
 
         if (capability !in ALWAYS_PROMPT) {
             builder.setNeutralButton("Always allow") { _, _ ->
-                preferences.edit().putBoolean(key(app.id, capability), true).apply()
+                preferences.edit().putBoolean(key(app, capability), true).apply()
                 resolve(true)
             }
         }
@@ -95,7 +95,7 @@ class CapabilityFirewall(context: Context) {
         editor.apply()
     }
 
-    private fun key(appId: String, capability: String): String = "$appId::$capability"
+    private fun key(app: HostedApp, capability: String): String = "${app.id}::${app.root.name}::$capability"
 
     private fun description(capability: String): String = when (capability) {
         "network.fetch" -> "Allows the project to contact remote HTTP and HTTPS servers from its WebView session."
