@@ -4,13 +4,14 @@ on:
   push:
     branches:
       - feature/landscape-observability-v1
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: landscape-observability-${{ github.ref }}
+  group: landscape-observability-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
