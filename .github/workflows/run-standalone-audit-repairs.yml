@@ -1,0 +1,37 @@
+name: Run standalone audited repairs
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.head_ref == 'feature/landscape-observability-v1' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/landscape-observability-v1
+          persist-credentials: true
+
+      - name: Apply audited repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/scripts/audit_repairs.py
+          git diff --check
+
+      - name: Commit repaired source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "PocketHost Audit"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/java
+          git commit -m "Repair runtime transparency and host safety gaps"
+          git push origin HEAD:feature/landscape-observability-v1
